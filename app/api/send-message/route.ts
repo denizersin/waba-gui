@@ -89,7 +89,9 @@ export async function POST(request: NextRequest) {
       receiver_id: to,
       content: message,
       timestamp: timestamp,
-      is_sent_by_me: true
+      is_sent_by_me: true,
+      message_type: 'text', // For now, we only send text messages
+      media_data: null // No media data for text messages
     };
 
     console.log('Storing message in database:', {
@@ -97,7 +99,8 @@ export async function POST(request: NextRequest) {
       sender_id: messageObject.sender_id,
       receiver_id: messageObject.receiver_id,
       content: messageObject.content.substring(0, 50) + (messageObject.content.length > 50 ? '...' : ''),
-      timestamp: messageObject.timestamp
+      timestamp: messageObject.timestamp,
+      message_type: messageObject.message_type
     });
 
     // Store the sent message in our database

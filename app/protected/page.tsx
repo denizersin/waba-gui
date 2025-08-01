@@ -19,6 +19,8 @@ interface Message {
   content: string;
   timestamp: string;
   is_sent_by_me: boolean;
+  message_type?: string;
+  media_data?: string | null;
 }
 
 export default function ChatPage() {
@@ -264,7 +266,9 @@ export default function ChatPage() {
           receiver_id: selectedUser.id,
           content,
           timestamp: new Date().toISOString(),
-          is_sent_by_me: true
+          is_sent_by_me: true,
+          message_type: 'text',
+          media_data: null
         };
 
         const { error: dbError } = await supabase

@@ -3,7 +3,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Send, MessageCircle, Loader2, X } from "lucide-react";
+import { ArrowLeft, Send, MessageCircle, Loader2, X, Download, FileText, Music, Image as ImageIcon, Play, Pause } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
 interface ChatUser {
@@ -19,6 +19,19 @@ interface Message {
   content: string;
   timestamp: string;
   is_sent_by_me: boolean;
+  message_type?: string;
+  media_data?: string | null;
+}
+
+interface MediaData {
+  type: string;
+  id?: string;
+  mime_type?: string;
+  sha256?: string;
+  filename?: string;
+  caption?: string;
+  voice?: boolean;
+  media_url?: string;
 }
 
 interface ChatWindowProps {
@@ -43,8 +56,10 @@ export function ChatWindow({
   isLoading = false
 }: ChatWindowProps) {
   const [messageInput, setMessageInput] = useState("");
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -102,6 +117,222 @@ export function ChatWindow({
         month: 'long', 
         day: 'numeric' 
       });
+    }
+  };
+
+  const handleAudioPlay = (messageId: string, audioUrl: string) => {
+    // Stop any currently playing audio
+    if (playingAudio && playingAudio !== messageId) {
+      const currentAudio = audioRefs.current[playingAudio];
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+      }
+    }
+
+    // Toggle play/pause for the clicked audio
+    const audio = audioRefs.current[messageId];
+    if (audio) {
+      if (playingAudio === messageId) {
+        audio.pause();
+        setPlayingAudio(null);
+      } else {
+        audio.play();
+        setPlayingAudio(messageId);
+      }
+    } else {
+      // Create new audio element
+      const newAudio = new Audio(audioUrl);
+      newAudio.onended = () => setPlayingAudio(null);
+      newAudio.onerror = () => {
+        console.error('Error playing audio');
+        setPlayingAudio(null);
+      };
+      audioRefs.current[messageId] = newAudio;
+      newAudio.play();
+      setPlayingAudio(messageId);
+    }
+  };
+
+  const downloadMedia = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Error downloading media:', error);
+    }
+  };
+
+  const renderMessageContent = (message: Message, isOwn: boolean) => {
+    const messageType = message.message_type || 'text';
+    let mediaData: MediaData | null = null;
+
+    if (message.media_data) {
+      try {
+        mediaData = JSON.parse(message.media_data);
+      } catch (error) {
+        console.error('Error parsing media data:', error);
+      }
+    }
+
+    const baseClasses = `max-w-[70%] px-4 py-2 rounded-lg ${
+      isOwn
+        ? 'bg-green-500 text-white ml-4'
+        : 'bg-white dark:bg-muted border border-border mr-4'
+    }`;
+
+    switch (messageType) {
+      case 'image':
+        return (
+          <div className={baseClasses}>
+            {mediaData?.media_url && (
+              <div className="mb-2">
+                <img 
+                  src={mediaData.media_url} 
+                  alt="Shared image"
+                  className="max-w-full h-auto rounded-lg cursor-pointer"
+                  onClick={() => window.open(mediaData.media_url, '_blank')}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+            {mediaData?.caption && (
+              <p className="text-sm whitespace-pre-wrap break-words mb-1">
+                {mediaData.caption}
+              </p>
+            )}
+            {!mediaData?.media_url && (
+              <div className="flex items-center gap-2 text-sm">
+                <ImageIcon className="h-4 w-4" />
+                <span>Image</span>
+              </div>
+            )}
+            <span className={`text-xs mt-1 block ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
+              {formatTime(message.timestamp)}
+            </span>
+          </div>
+        );
+
+      case 'document':
+        return (
+          <div className={baseClasses}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`p-2 rounded-full ${isOwn ? 'bg-green-600' : 'bg-gray-200'}`}>
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {mediaData?.filename || 'Document'}
+                </p>
+                <p className={`text-xs ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
+                  {mediaData?.mime_type}
+                </p>
+              </div>
+              {mediaData?.media_url && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={`p-1 h-8 w-8 ${isOwn ? 'hover:bg-green-600' : 'hover:bg-gray-200'}`}
+                  onClick={() => downloadMedia(mediaData.media_url!, mediaData?.filename || 'document')}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <span className={`text-xs block ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
+              {formatTime(message.timestamp)}
+            </span>
+          </div>
+        );
+
+      case 'audio':
+        return (
+          <div className={baseClasses}>
+            <div className="flex items-center gap-3 mb-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className={`p-2 rounded-full ${isOwn ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-200 hover:bg-gray-300'}`}
+                onClick={() => mediaData?.media_url && handleAudioPlay(message.id, mediaData.media_url)}
+                disabled={!mediaData?.media_url}
+              >
+                {playingAudio === message.id ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+              </Button>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Music className="h-4 w-4" />
+                  <span className="text-sm">
+                    {mediaData?.voice ? 'Voice Message' : 'Audio'}
+                  </span>
+                </div>
+                <div className={`h-1 bg-current opacity-20 rounded-full mt-1`}></div>
+              </div>
+            </div>
+            <span className={`text-xs block ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
+              {formatTime(message.timestamp)}
+            </span>
+          </div>
+        );
+
+      case 'video':
+        return (
+          <div className={baseClasses}>
+            {mediaData?.media_url && (
+              <div className="mb-2">
+                <video 
+                  controls
+                  className="max-w-full h-auto rounded-lg"
+                  preload="metadata"
+                >
+                  <source src={mediaData.media_url} type={mediaData.mime_type} />
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            )}
+            {mediaData?.caption && (
+              <p className="text-sm whitespace-pre-wrap break-words mb-1">
+                {mediaData.caption}
+              </p>
+            )}
+            {!mediaData?.media_url && (
+              <div className="flex items-center gap-2 text-sm">
+                <Play className="h-4 w-4" />
+                <span>Video</span>
+              </div>
+            )}
+            <span className={`text-xs mt-1 block ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
+              {formatTime(message.timestamp)}
+            </span>
+          </div>
+        );
+
+      default:
+        // Text message or fallback
+        return (
+          <div className={baseClasses}>
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {message.content}
+            </p>
+            <span className={`text-xs mt-1 block ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
+              {formatTime(message.timestamp)}
+            </span>
+          </div>
+        );
     }
   };
 
@@ -207,24 +438,7 @@ export function ChatWindow({
                         key={message.id}
                         className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
                       >
-                        <div
-                          className={`max-w-[70%] px-4 py-2 rounded-lg ${
-                            isOwn
-                              ? 'bg-green-500 text-white ml-4'
-                              : 'bg-white dark:bg-muted border border-border mr-4'
-                          }`}
-                        >
-                          <p className="text-sm whitespace-pre-wrap break-words">
-                            {message.content}
-                          </p>
-                          <span
-                            className={`text-xs mt-1 block ${
-                              isOwn ? 'text-green-100' : 'text-muted-foreground'
-                            }`}
-                          >
-                            {formatTime(message.timestamp)}
-                          </span>
-                        </div>
+                        {renderMessageContent(message, isOwn)}
                       </div>
                     );
                   })}
