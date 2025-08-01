@@ -23,6 +23,8 @@ interface Message {
   is_sent_by_me: boolean;
   message_type?: string;
   media_data?: string | null;
+  is_read?: boolean;
+  read_at?: string | null;
 }
 
 interface MediaData {
@@ -79,12 +81,30 @@ export function ChatWindow({
   const [sendingMedia, setSendingMedia] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const unreadIndicatorRef = useRef<HTMLDivElement>(null);
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
-  // Auto-scroll to bottom when new messages arrive
+  // Calculate unread messages
+  const unreadMessages = messages.filter(msg => 
+    !msg.is_sent_by_me && !msg.is_read
+  );
+  const firstUnreadIndex = messages.findIndex(msg => 
+    !msg.is_sent_by_me && !msg.is_read
+  );
+  const hasUnreadMessages = unreadMessages.length > 0;
+
+  // Auto-scroll to unread messages or bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (hasUnreadMessages && firstUnreadIndex !== -1) {
+      // Scroll to first unread message on initial load
+      setTimeout(() => {
+        unreadIndicatorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    } else {
+      // Scroll to bottom for new messages or when no unread messages
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, hasUnreadMessages, firstUnreadIndex]);
 
   // Handle ESC key press within the chat window
   useEffect(() => {
@@ -764,12 +784,28 @@ export function ChatWindow({
                 <div className="space-y-3">
                   {dayMessages.map((message) => {
                     const isOwn = message.sender_id === currentUserId;
+                    const globalIndex = messages.findIndex(m => m.id === message.id);
+                    const isFirstUnread = globalIndex === firstUnreadIndex;
+                    
                     return (
-                      <div
-                        key={message.id}
-                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
-                      >
-                        {renderMessageContent(message, isOwn)}
+                      <div key={message.id}>
+                        {/* Unread messages indicator */}
+                        {isFirstUnread && hasUnreadMessages && (
+                          <div 
+                            ref={unreadIndicatorRef}
+                            className="flex items-center justify-center my-4"
+                          >
+                            <div className="flex-1 h-px bg-red-500"></div>
+                            <div className="px-3 py-1 bg-red-500 text-white text-xs font-medium rounded-full">
+                              {unreadMessages.length} unread message{unreadMessages.length !== 1 ? 's' : ''}
+                            </div>
+                            <div className="flex-1 h-px bg-red-500"></div>
+                          </div>
+                        )}
+                        
+                        <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                          {renderMessageContent(message, isOwn)}
+                        </div>
                       </div>
                     );
                   })}

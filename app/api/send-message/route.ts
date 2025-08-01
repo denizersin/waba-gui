@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
       content: message,
       timestamp: timestamp,
       is_sent_by_me: true,
+      is_read: true, // Outgoing messages are already "read" by the sender
       message_type: 'text', // For now, we only send text messages
       media_data: null // No media data for text messages
     };

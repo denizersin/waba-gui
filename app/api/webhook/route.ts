@@ -224,8 +224,7 @@ export async function POST(request: NextRequest) {
             whatsappMediaUrl,
             phoneNumber, // sender ID for folder structure
             mediaData.id, // media ID for filename
-            mediaData.mime_type || 'application/octet-stream',
-            WHATSAPP_ACCESS_TOKEN
+            mediaData.mime_type || 'application/octet-stream'
           );
           
           if (s3MediaUrl) {
@@ -317,6 +316,7 @@ export async function POST(request: NextRequest) {
         content: content,
         timestamp: messageTimestamp,
         is_sent_by_me: false,
+        is_read: false, // Mark incoming messages as unread by default
         message_type: messageType,
         media_data: mediaData ? JSON.stringify({
           ...mediaData,

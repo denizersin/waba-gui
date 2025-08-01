@@ -10,6 +10,8 @@ interface ChatUser {
   id: string;
   name: string;
   last_active: string;
+  unread_count?: number; // Added for unread count
+  last_message_time?: string; // Added for last message time
 }
 
 interface Message {
@@ -77,17 +79,21 @@ export default function ChatPage() {
     if (!user) return;
 
     const fetchUsers = async () => {
+      // Use the new user_conversations view instead of users table
       const { data } = await supabase
-        .from('users')
+        .from('user_conversations')
         .select('*')
-        .order('last_active', { ascending: false });
+        .order('last_message_time', { ascending: false });
       
-      if (data) setUsers(data);
+      if (data) {
+        console.log('Fetched user conversations:', data);
+        setUsers(data);
+      }
     };
 
     fetchUsers();
 
-    // Set up real-time subscription for users
+    // Set up real-time subscription for users table changes
     const usersSubscription = supabase
       .channel('users-channel')
       .on('postgres_changes', { 
@@ -96,25 +102,28 @@ export default function ChatPage() {
         table: 'users' 
       }, (payload) => {
         console.log('Users table change:', payload);
-        
-        if (payload.eventType === 'INSERT') {
-          setUsers((prev) => {
-            const exists = prev.find(u => u.id === payload.new.id);
-            if (exists) return prev;
-            return [payload.new as ChatUser, ...prev];
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          setUsers((prev) => 
-            prev.map((u) => u.id === payload.new.id ? payload.new as ChatUser : u)
-          );
-        } else if (payload.eventType === 'DELETE') {
-          setUsers((prev) => prev.filter((u) => u.id !== payload.old.id));
-        }
+        // Refresh the conversations view when users table changes
+        fetchUsers();
+      })
+      .subscribe();
+
+    // Set up real-time subscription for messages table changes
+    const messagesSubscription = supabase
+      .channel('messages-global-channel')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'messages' 
+      }, (payload) => {
+        console.log('Messages table change:', payload);
+        // Refresh the conversations view when messages table changes
+        fetchUsers();
       })
       .subscribe();
 
     return () => {
       usersSubscription.unsubscribe();
+      messagesSubscription.unsubscribe();
     };
   }, [user]);
 
@@ -207,13 +216,46 @@ export default function ChatPage() {
     };
   }, [selectedUser, user]);
 
-  const handleUserSelect = useCallback((user: ChatUser) => {
-    console.log('Selected user:', user);
-    setSelectedUser(user);
-    if (isMobile) {
+  // Handle user selection and mark messages as read
+  const handleUserSelect = async (selectedUser: ChatUser) => {
+    console.log('User selected:', selectedUser);
+    setSelectedUser(selectedUser);
+    
+    // Mark messages as read when opening a conversation
+    if (selectedUser.unread_count && selectedUser.unread_count > 0) {
+      try {
+        const response = await fetch('/api/messages/mark-read', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            otherUserId: selectedUser.id
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log(`Marked ${result.markedCount} messages as read`);
+          
+          // Update the user's unread count locally
+          setUsers(prev => prev.map(u => 
+            u.id === selectedUser.id 
+              ? { ...u, unread_count: 0 }
+              : u
+          ));
+        }
+      } catch (error) {
+        console.error('Error marking messages as read:', error);
+      }
+    }
+
+    if (!isMobile) {
+      setShowChat(true);
+    } else {
       setShowChat(true);
     }
-  }, [isMobile]);
+  };
 
   const handleBackToUsers = useCallback(() => {
     setShowChat(false);

@@ -244,6 +244,7 @@ export async function POST(request: NextRequest) {
           content: caption || `[${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}]`,
           timestamp: timestamp,
           is_sent_by_me: true,
+          is_read: true, // Outgoing messages are already "read" by the sender
           message_type: mediaType,
           media_data: JSON.stringify({
             type: mediaType,
