@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 // WhatsApp webhook verification token (set this in your environment variables)
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'your-verify-token';
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'your-verify-token';
 
 // TypeScript interfaces for webhook payload
 interface WhatsAppContact {

@@ -66,8 +66,8 @@ Use this checklist to ensure you have everything set up correctly for your Whats
 ### 2. Environment Variables
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` set
 - [ ] `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY` set
-- [ ] `WHATSAPP_PHONE_NUMBER_ID` set
-- [ ] `WHATSAPP_ACCESS_TOKEN` set
+- [ ] `PHONE_NUMBER_ID` set
+- [ ] `WHATSAPP_TOKEN` set
 - [ ] `WHATSAPP_VERIFY_TOKEN` set
 - [ ] `WHATSAPP_API_VERSION` set (default: v17.0)
 
