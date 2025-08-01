@@ -125,7 +125,17 @@ PHONE_NUMBER_ID=your_whatsapp_phone_number_id
 WHATSAPP_TOKEN=your_permanent_access_token
 VERIFY_TOKEN=your_custom_verify_token
 WHATSAPP_API_VERSION=v23.0
+
+# WhatsApp Business Account Owner (Optional)
+# Set this to your Supabase user ID to ensure incoming messages are properly attributed
+WHATSAPP_BUSINESS_OWNER_ID=your_supabase_user_id
 ```
+
+**Important**: To get your Supabase user ID:
+1. Sign up/login to your app
+2. Open browser dev tools → Console
+3. Run: `console.log(await supabase.auth.getUser())`
+4. Copy the `id` field from the response
 
 ### 5. Run the Application
 
@@ -231,6 +241,11 @@ The app can be deployed to any platform that supports Next.js:
    - Check Supabase real-time is enabled
    - Verify RLS policies
    - Check network connectivity
+
+4. **Incoming messages not showing**:
+   - Set `WHATSAPP_BUSINESS_OWNER_ID` to your Supabase user ID
+   - Check webhook is receiving and processing messages
+   - Verify message filtering logic in console logs
 
 ### Debug Mode
 

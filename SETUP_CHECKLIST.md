@@ -70,6 +70,7 @@ Use this checklist to ensure you have everything set up correctly for your Whats
 - [ ] `WHATSAPP_TOKEN` set
 - [ ] `VERIFY_TOKEN` set
 - [ ] `WHATSAPP_API_VERSION` set (default: v23.0)
+- [ ] `WHATSAPP_BUSINESS_OWNER_ID` set (your Supabase user ID)
 
 ### 3. Application Testing
 - [ ] Development server starts (`npm run dev`)
@@ -77,6 +78,12 @@ Use this checklist to ensure you have everything set up correctly for your Whats
 - [ ] Authentication pages accessible
 - [ ] No console errors in browser
 - [ ] Database connection working
+
+### 4. Get Your Supabase User ID
+- [ ] Sign up/login to your application
+- [ ] Open browser dev tools → Console
+- [ ] Run: `console.log(await supabase.auth.getUser())`
+- [ ] Copy the `id` field and set it as `WHATSAPP_BUSINESS_OWNER_ID`
 
 ## ✅ Feature Testing
 
@@ -98,6 +105,12 @@ Use this checklist to ensure you have everything set up correctly for your Whats
 - [ ] Webhook verification working
 - [ ] API returns proper status codes
 
+### 4. Message Flow Testing
+- [ ] Send message from app to WhatsApp number
+- [ ] Receive message from WhatsApp number to app
+- [ ] Both messages appear in same conversation
+- [ ] Real-time updates working for both directions
+
 ## ✅ Production Deployment
 
 ### 1. Deployment Platform
@@ -116,6 +129,7 @@ Use this checklist to ensure you have everything set up correctly for your Whats
 - [ ] Webhook receives test messages
 - [ ] Messages can be sent successfully
 - [ ] Real-time updates working
+- [ ] Bidirectional messaging working correctly
 
 ## 🐛 Common Issues & Solutions
 
@@ -128,6 +142,11 @@ Use this checklist to ensure you have everything set up correctly for your Whats
 - **Webhook not verified**: Check verify token matches exactly
 - **Messages not sending**: Verify access token and phone number permissions
 - **Rate limiting**: Check API usage and rate limits
+
+### Message Flow Issues
+- **Incoming messages not showing**: Set `WHATSAPP_BUSINESS_OWNER_ID` to your Supabase user ID
+- **Messages in wrong conversation**: Check sender_id and receiver_id are correctly set
+- **Duplicate messages**: Ensure message IDs are unique
 
 ### Application Issues
 - **Build errors**: Check TypeScript errors and missing dependencies

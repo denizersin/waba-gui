@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const value = changes?.value;
     const messages = value?.messages || [];
     const contacts: WhatsAppContact[] = value?.contacts || [];
-
+    
     // Process each incoming message
     for (const message of messages) {
       const phoneNumber = message.from;
@@ -101,13 +101,53 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Store the incoming message
+      // Find the receiver - this should be the authenticated user who owns the WhatsApp Business account
+      // Option 1: Use a configured business owner ID from environment
+      const businessOwnerId = process.env.WHATSAPP_BUSINESS_OWNER_ID;
+      
+      // Option 2: Find the first authenticated user (fallback)
+      let receiverId = businessOwnerId;
+      
+      if (!receiverId) {
+        // Try to find a user in the system (this is a fallback approach)
+        const { data: users } = await supabase
+          .from('users')
+          .select('id')
+          .neq('id', phoneNumber) // Don't select the sender
+          .limit(1);
+        
+        if (users && users.length > 0) {
+          receiverId = users[0].id;
+        } else {
+          // If no users found, we'll create a placeholder system user
+          receiverId = 'whatsapp-business-account';
+          
+          // Ensure the system user exists
+          const { error: systemUserError } = await supabase
+            .from('users')
+            .upsert([{
+              id: receiverId,
+              name: 'WhatsApp Business Account',
+              last_active: messageTimestamp
+            }], {
+              onConflict: 'id'
+            });
+
+          if (systemUserError) {
+            console.error('Error creating system user:', systemUserError);
+          }
+        }
+      }
+
+      console.log(`Message receiver identified as: ${receiverId}`);
+
+      // Store the incoming message with proper receiver_id
       const { error: messageError } = await supabase
         .from('messages')
         .insert([{
           id: message.id, // Use WhatsApp message ID
           sender_id: phoneNumber,
-          receiver_id: 'system', // You might want to implement proper receiver logic
+          receiver_id: receiverId, // Now properly set to the business account owner
           content: messageText,
           timestamp: messageTimestamp,
           is_sent_by_me: false
@@ -116,7 +156,7 @@ export async function POST(request: NextRequest) {
       if (messageError) {
         console.error('Error storing message:', messageError);
       } else {
-        console.log(`Message stored successfully: ${message.id}`);
+        console.log(`Message stored successfully: ${message.id} (from: ${phoneNumber} to: ${receiverId})`);
       }
     }
 
