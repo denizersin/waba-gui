@@ -133,7 +133,11 @@ export function ChatWindow({
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   // Handle template message sending
-  const handleSendTemplate = async (templateName: string, templateData: WhatsAppTemplate, variables: Record<string, string>) => {
+  const handleSendTemplate = async (templateName: string, templateData: WhatsAppTemplate, variables: {
+    header: Record<string, string>;
+    body: Record<string, string>;
+    footer: Record<string, string>;
+  }) => {
     if (!selectedUser) return;
 
     try {
@@ -759,25 +763,16 @@ export function ChatWindow({
         );
 
       case 'template':
-        // Template message with full component display
+        // Template message - display final rendered content cleanly
         return (
           <div className={baseClasses}>
-            <div className="flex items-center gap-2 mb-3">
-              <MessageSquare className="h-4 w-4 opacity-75" />
-              <span className="text-xs opacity-75 font-medium">Template Message</span>
-            </div>
-            
-            {/* Template Content */}
-            <div className="space-y-2">
+            {/* Template Content - Clean Display */}
+            <div className="space-y-3">
               {/* Header Component */}
               {mediaData?.header && (
-                <div className="border-b border-opacity-20 border-current pb-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-2 h-2 rounded-full bg-current opacity-50"></div>
-                    <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Header</span>
-                  </div>
+                <div>
                   {mediaData.header.format === 'IMAGE' && mediaData.header.media_url ? (
-                    <div className="mb-2 rounded-lg overflow-hidden">
+                    <div className="mb-3 rounded-lg overflow-hidden">
                       <Image
                         src={mediaData.header.media_url}
                         alt="Template header image"
@@ -788,7 +783,7 @@ export function ChatWindow({
                       />
                     </div>
                   ) : mediaData.header.format === 'VIDEO' && mediaData.header.media_url ? (
-                    <div className="mb-2 rounded-lg overflow-hidden">
+                    <div className="mb-3 rounded-lg overflow-hidden">
                       <video 
                         controls
                         className="max-w-full h-auto rounded-lg"
@@ -799,27 +794,23 @@ export function ChatWindow({
                       </video>
                     </div>
                   ) : mediaData.header.format === 'DOCUMENT' && mediaData.header.media_url ? (
-                    <div className="flex items-center gap-3 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg mb-2">
+                    <div className="flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3">
                       <FileText className="h-5 w-5 text-gray-600" />
                       <span className="text-sm font-medium">{mediaData.header.filename || 'Document'}</span>
                     </div>
                   ) : mediaData.header.text ? (
-                    <p className="text-sm font-semibold leading-relaxed">
-                      {mediaData.header.text}
-                    </p>
+                    <div className="mb-3">
+                      <p className="text-base font-semibold leading-relaxed">
+                        {mediaData.header.text}
+                      </p>
+                    </div>
                   ) : null}
                 </div>
               )}
 
               {/* Body Component */}
               {mediaData?.body && (
-                <div className={mediaData?.header ? '' : 'pb-2'}>
-                  {mediaData?.header && (
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-2 h-2 rounded-full bg-current opacity-50"></div>
-                      <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Body</span>
-                    </div>
-                  )}
+                <div>
                   <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                     {mediaData.body.text || message.content}
                   </p>
@@ -835,11 +826,7 @@ export function ChatWindow({
 
               {/* Footer Component */}
               {mediaData?.footer && (
-                <div className="border-t border-opacity-20 border-current pt-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-2 h-2 rounded-full bg-current opacity-50"></div>
-                    <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Footer</span>
-                  </div>
+                <div className="mt-2">
                   <p className="text-xs opacity-75 leading-relaxed">
                     {mediaData.footer.text}
                   </p>
@@ -848,12 +835,8 @@ export function ChatWindow({
 
               {/* Buttons Component */}
               {mediaData?.buttons && mediaData.buttons.length > 0 && (
-                <div className="border-t border-opacity-20 border-current pt-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-2 h-2 rounded-full bg-current opacity-50"></div>
-                    <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Buttons</span>
-                  </div>
-                  <div className="space-y-1">
+                <div className="mt-4">
+                  <div className="space-y-2">
                     {mediaData.buttons.map((button: {
                       type: string;
                       text: string;
@@ -863,44 +846,51 @@ export function ChatWindow({
                       <div
                         key={index}
                         className={`
-                          px-3 py-2 rounded-lg border border-opacity-30 border-current text-center text-sm font-medium
+                          px-4 py-3 rounded-lg border border-opacity-30 border-current text-center font-medium
                           ${isOwn 
                             ? 'bg-white bg-opacity-20 hover:bg-opacity-30' 
                             : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
                           }
                           cursor-pointer transition-colors
                         `}
+                        onClick={() => {
+                          if (button.type === 'URL' && button.url) {
+                            window.open(button.url, '_blank');
+                          } else if (button.type === 'PHONE_NUMBER' && button.phone_number) {
+                            window.open(`tel:${button.phone_number}`, '_self');
+                          }
+                        }}
                       >
                         <div className="flex items-center justify-center gap-2">
                           {button.type === 'URL' && (
                             <>
-                              <span>🔗</span>
-                              <span>{button.text}</span>
+                              <span className="text-base">🔗</span>
+                              <span className="text-sm">{button.text}</span>
                             </>
                           )}
                           {button.type === 'PHONE_NUMBER' && (
                             <>
-                              <span>📞</span>
-                              <span>{button.text}</span>
+                              <span className="text-base">📞</span>
+                              <span className="text-sm">{button.text}</span>
                             </>
                           )}
                           {button.type === 'QUICK_REPLY' && (
                             <>
-                              <span>💬</span>
-                              <span>{button.text}</span>
+                              <span className="text-base">💬</span>
+                              <span className="text-sm">{button.text}</span>
                             </>
                           )}
                           {!['URL', 'PHONE_NUMBER', 'QUICK_REPLY'].includes(button.type) && (
-                            <span>{button.text}</span>
+                            <span className="text-sm">{button.text}</span>
                           )}
                         </div>
                         {button.url && (
-                          <div className="text-xs opacity-60 mt-1 truncate">
+                          <div className="text-xs opacity-60 mt-2 truncate border-t border-opacity-20 border-current pt-2">
                             {button.url}
                           </div>
                         )}
                         {button.phone_number && (
-                          <div className="text-xs opacity-60 mt-1">
+                          <div className="text-xs opacity-60 mt-2 border-t border-opacity-20 border-current pt-2">
                             {button.phone_number}
                           </div>
                         )}
@@ -911,24 +901,10 @@ export function ChatWindow({
               )}
             </div>
 
-            {/* Template Info Footer */}
-            <div className="mt-3 pt-2 border-t border-opacity-20 border-current flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {mediaData?.template_name && (
-                  <span className="text-xs opacity-75">
-                    Template: {mediaData.template_name}
-                  </span>
-                )}
-                {mediaData?.language && (
-                  <span className="text-xs opacity-60">
-                    • {mediaData.language.toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <span className={`text-xs ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
-                {formatTime(message.timestamp)}
-              </span>
-            </div>
+            {/* Timestamp */}
+            <span className={`text-xs mt-3 block ${isOwn ? 'text-green-100' : 'text-muted-foreground'}`}>
+              {formatTime(message.timestamp)}
+            </span>
           </div>
         );
 

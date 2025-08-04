@@ -57,7 +57,11 @@ interface ChatUser {
 interface TemplateSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  onSendTemplate: (templateName: string, templateData: WhatsAppTemplate, variables: Record<string, string>) => Promise<void>;
+  onSendTemplate: (templateName: string, templateData: WhatsAppTemplate, variables: {
+    header: Record<string, string>;
+    body: Record<string, string>;
+    footer: Record<string, string>;
+  }) => Promise<void>;
   selectedUser: ChatUser;
 }
 
@@ -65,7 +69,15 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<WhatsAppTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
-  const [variables, setVariables] = useState<Record<string, string>>({});
+  const [variables, setVariables] = useState<{
+    header: Record<string, string>;
+    body: Record<string, string>;
+    footer: Record<string, string>;
+  }>({
+    header: {},
+    body: {},
+    footer: {}
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -113,31 +125,75 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     }
   };
 
-  const extractVariables = (template: WhatsAppTemplate): string[] => {
-    const variables: string[] = [];
+  const extractVariables = (template: WhatsAppTemplate): {
+    header: string[];
+    body: string[];
+    footer: string[];
+    all: string[];
+  } => {
+    const headerVariables: string[] = [];
+    const bodyVariables: string[] = [];
+    const footerVariables: string[] = [];
     
     template.components.forEach(component => {
       if (component.text) {
         // Extract variables like {{1}}, {{2}}, etc.
         const matches = component.text.match(/\{\{(\d+)\}\}/g);
         if (matches) {
-          matches.forEach(match => {
-            const variable = match.replace(/[{}]/g, '');
-            if (!variables.includes(variable)) {
-              variables.push(variable);
-            }
-          });
+          const componentVariables = matches.map(match => match.replace(/[{}]/g, ''));
+          
+          switch (component.type) {
+            case 'HEADER':
+              componentVariables.forEach(variable => {
+                if (!headerVariables.includes(variable)) {
+                  headerVariables.push(variable);
+                }
+              });
+              break;
+            case 'BODY':
+              componentVariables.forEach(variable => {
+                if (!bodyVariables.includes(variable)) {
+                  bodyVariables.push(variable);
+                }
+              });
+              break;
+            case 'FOOTER':
+              componentVariables.forEach(variable => {
+                if (!footerVariables.includes(variable)) {
+                  footerVariables.push(variable);
+                }
+              });
+              break;
+          }
         }
       }
     });
 
-    return variables.sort((a, b) => parseInt(a) - parseInt(b));
+    // Sort variables numerically
+    headerVariables.sort((a, b) => parseInt(a) - parseInt(b));
+    bodyVariables.sort((a, b) => parseInt(a) - parseInt(b));
+    footerVariables.sort((a, b) => parseInt(a) - parseInt(b));
+    
+    // Get all unique variables
+    const allVariables = [...new Set([...headerVariables, ...bodyVariables, ...footerVariables])]
+      .sort((a, b) => parseInt(a) - parseInt(b));
+
+    return {
+      header: headerVariables,
+      body: bodyVariables,
+      footer: footerVariables,
+      all: allVariables
+    };
   };
 
-  const renderTemplatePreview = (template: WhatsAppTemplate, vars: Record<string, string>) => {
-    const replaceVariables = (text: string) => {
+  const renderTemplatePreview = (template: WhatsAppTemplate, vars: {
+    header: Record<string, string>;
+    body: Record<string, string>;
+    footer: Record<string, string>;
+  }) => {
+    const replaceVariables = (text: string, componentVars: Record<string, string>) => {
       let result = text;
-      Object.entries(vars).forEach(([key, value]) => {
+      Object.entries(componentVars).forEach(([key, value]) => {
         result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || `{{${key}}}`);
       });
       return result;
@@ -149,51 +205,97 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
           <div className="bg-green-500 text-white p-4 rounded-2xl m-4">
             {/* Header */}
             {template.formatted_components.header && (
-              <div className="mb-2">
-                <p className="font-semibold text-sm">
-                  {template.formatted_components.header.text ? 
-                    replaceVariables(template.formatted_components.header.text) : 
-                    '[Header Content]'
-                  }
-                </p>
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
+                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Header</span>
+                </div>
+                {template.formatted_components.header.format === 'IMAGE' ? (
+                  <div className="bg-white bg-opacity-20 rounded-lg p-3 text-center mb-2">
+                    <span className="text-sm">📷 Header Image</span>
+                  </div>
+                ) : template.formatted_components.header.format === 'VIDEO' ? (
+                  <div className="bg-white bg-opacity-20 rounded-lg p-3 text-center mb-2">
+                    <span className="text-sm">🎥 Header Video</span>
+                  </div>
+                ) : template.formatted_components.header.format === 'DOCUMENT' ? (
+                  <div className="bg-white bg-opacity-20 rounded-lg p-3 text-center mb-2">
+                    <span className="text-sm">📄 Header Document</span>
+                  </div>
+                ) : template.formatted_components.header.text ? (
+                  <p className="font-semibold text-sm mb-2">
+                    {replaceVariables(template.formatted_components.header.text, vars.header)}
+                  </p>
+                ) : (
+                  <p className="font-semibold text-sm mb-2">[Header Content]</p>
+                )}
               </div>
             )}
 
             {/* Body */}
             {template.formatted_components.body && (
-              <div className="mb-2">
+              <div className="mb-3">
+                {template.formatted_components.header && (
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
+                    <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Body</span>
+                  </div>
+                )}
                 <p className="text-sm leading-relaxed">
-                  {replaceVariables(template.formatted_components.body.text || '')}
+                  {replaceVariables(template.formatted_components.body.text || '', vars.body)}
                 </p>
               </div>
             )}
 
             {/* Footer */}
             {template.formatted_components.footer && (
-              <div className="mb-2">
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
+                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Footer</span>
+                </div>
                 <p className="text-xs opacity-75">
-                  {template.formatted_components.footer.text ? 
-                    replaceVariables(template.formatted_components.footer.text) : ''
-                  }
+                  {replaceVariables(template.formatted_components.footer.text || '', vars.footer)}
                 </p>
               </div>
             )}
 
             {/* Buttons */}
             {template.formatted_components.buttons.length > 0 && (
-              <div className="mt-3 space-y-1">
-                {template.formatted_components.buttons.map((button, index) => (
-                  <div
-                    key={index}
-                    className="bg-white bg-opacity-20 rounded-lg p-2 text-center"
-                  >
-                    <span className="text-sm font-medium">{button.text}</span>
-                  </div>
-                ))}
+              <div className="mt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
+                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Buttons</span>
+                </div>
+                <div className="space-y-1">
+                  {template.formatted_components.buttons.map((button, index) => (
+                    <div
+                      key={index}
+                      className="bg-white bg-opacity-20 rounded-lg p-2 text-center"
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        {button.type === 'URL' && <span>🔗</span>}
+                        {button.type === 'PHONE_NUMBER' && <span>📞</span>}
+                        {button.type === 'QUICK_REPLY' && <span>💬</span>}
+                        <span className="text-sm font-medium">{button.text}</span>
+                      </div>
+                      {button.url && (
+                        <div className="text-xs opacity-60 mt-1 truncate">
+                          {button.url}
+                        </div>
+                      )}
+                      {button.phone_number && (
+                        <div className="text-xs opacity-60 mt-1">
+                          {button.phone_number}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="text-xs opacity-75 text-right mt-2">
+            <div className="text-xs opacity-75 text-right mt-3">
               12:34 PM
             </div>
           </div>
@@ -209,18 +311,43 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     // Initialize variables
     const templateVars = extractVariables(template);
     const initialVars: Record<string, string> = {};
-    templateVars.forEach(variable => {
+    templateVars.all.forEach(variable => {
       initialVars[variable] = '';
     });
-    setVariables(initialVars);
+    setVariables({
+      header: {},
+      body: {},
+      footer: {}
+    });
   };
 
   const handleSendTemplate = async () => {
     if (!selectedTemplate) return;
 
-    // Validate required variables
+    // Validate required variables per component
     const templateVars = extractVariables(selectedTemplate);
-    const missingVars = templateVars.filter(variable => !variables[variable]?.trim());
+    const missingVars: string[] = [];
+    
+    // Check header variables
+    templateVars.header.forEach(variable => {
+      if (!variables.header[variable]?.trim()) {
+        missingVars.push(`Header {{${variable}}}`);
+      }
+    });
+    
+    // Check body variables
+    templateVars.body.forEach(variable => {
+      if (!variables.body[variable]?.trim()) {
+        missingVars.push(`Body {{${variable}}}`);
+      }
+    });
+    
+    // Check footer variables
+    templateVars.footer.forEach(variable => {
+      if (!variables.footer[variable]?.trim()) {
+        missingVars.push(`Footer {{${variable}}}`);
+      }
+    });
     
     if (missingVars.length > 0) {
       setError(`Please fill in all variables: ${missingVars.join(', ')}`);
@@ -235,7 +362,11 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
       
       // Reset state and close
       setSelectedTemplate(null);
-      setVariables({});
+      setVariables({
+        header: {},
+        body: {},
+        footer: {}
+      });
       setShowPreview(false);
       onClose();
     } catch (error) {
@@ -248,7 +379,11 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
 
   const handleClose = () => {
     setSelectedTemplate(null);
-    setVariables({});
+    setVariables({
+      header: {},
+      body: {},
+      footer: {}
+    });
     setShowPreview(false);
     setSearchTerm('');
     setError(null);
@@ -350,7 +485,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                             {template.status}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {extractVariables(template).length} variables
+                            {extractVariables(template).all.length} variables
                           </span>
                         </div>
                       </div>
@@ -380,26 +515,90 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                   </div>
 
                   {/* Variables */}
-                  {extractVariables(selectedTemplate).length > 0 && (
-                    <div className="space-y-4">
+                  {extractVariables(selectedTemplate).all.length > 0 && (
+                    <div className="space-y-6">
                       <h4 className="font-medium">Template Variables</h4>
-                      {extractVariables(selectedTemplate).map((variable) => (
-                        <div key={variable}>
-                          <Label htmlFor={`var-${variable}`}>
-                            Variable {`{{${variable}}}`} *
-                          </Label>
-                          <Input
-                            id={`var-${variable}`}
-                            value={variables[variable] || ''}
-                            onChange={(e) => setVariables(prev => ({
-                              ...prev,
-                              [variable]: e.target.value
-                            }))}
-                            placeholder={`Enter value for {{${variable}}}`}
-                            className="mt-1"
-                          />
+                      
+                      {/* Header Variables */}
+                      {extractVariables(selectedTemplate).header.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                            <h5 className="text-sm font-medium text-blue-700 dark:text-blue-300">Header Variables</h5>
+                          </div>
+                          {extractVariables(selectedTemplate).header.map((variable) => (
+                            <div key={`header-${variable}`}>
+                              <Label htmlFor={`header-var-${variable}`}>
+                                Header Variable {`{{${variable}}}`} *
+                              </Label>
+                              <Input
+                                id={`header-var-${variable}`}
+                                value={variables.header[variable] || ''}
+                                onChange={(e) => setVariables(prev => ({
+                                  ...prev,
+                                  header: { ...prev.header, [variable]: e.target.value }
+                                }))}
+                                placeholder={`Enter value for header {{${variable}}}`}
+                                className="mt-1"
+                              />
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+
+                      {/* Body Variables */}
+                      {extractVariables(selectedTemplate).body.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                            <h5 className="text-sm font-medium text-green-700 dark:text-green-300">Body Variables</h5>
+                          </div>
+                          {extractVariables(selectedTemplate).body.map((variable) => (
+                            <div key={`body-${variable}`}>
+                              <Label htmlFor={`body-var-${variable}`}>
+                                Body Variable {`{{${variable}}}`} *
+                              </Label>
+                              <Input
+                                id={`body-var-${variable}`}
+                                value={variables.body[variable] || ''}
+                                onChange={(e) => setVariables(prev => ({
+                                  ...prev,
+                                  body: { ...prev.body, [variable]: e.target.value }
+                                }))}
+                                placeholder={`Enter value for body {{${variable}}}`}
+                                className="mt-1"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Footer Variables */}
+                      {extractVariables(selectedTemplate).footer.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                            <h5 className="text-sm font-medium text-purple-700 dark:text-purple-300">Footer Variables</h5>
+                          </div>
+                          {extractVariables(selectedTemplate).footer.map((variable) => (
+                            <div key={`footer-${variable}`}>
+                              <Label htmlFor={`footer-var-${variable}`}>
+                                Footer Variable {`{{${variable}}}`} *
+                              </Label>
+                              <Input
+                                id={`footer-var-${variable}`}
+                                value={variables.footer[variable] || ''}
+                                onChange={(e) => setVariables(prev => ({
+                                  ...prev,
+                                  footer: { ...prev.footer, [variable]: e.target.value }
+                                }))}
+                                placeholder={`Enter value for footer {{${variable}}}`}
+                                className="mt-1"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -431,7 +630,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
         {selectedTemplate && (
           <div className="flex items-center justify-between p-6 border-t border-border bg-muted/50">
             <div className="text-sm text-muted-foreground">
-              Template: {selectedTemplate.name} • {extractVariables(selectedTemplate).length} variables
+              Template: {selectedTemplate.name} • {extractVariables(selectedTemplate).all.length} variables
             </div>
             <div className="flex gap-3">
               <Button

@@ -25,7 +25,11 @@ interface SendTemplateRequest {
       }>;
     }>;
   };
-  variables: Record<string, string>;
+  variables: {
+    header: Record<string, string>;
+    body: Record<string, string>;
+    footer: Record<string, string>;
+  };
 }
 
 /**
@@ -35,24 +39,60 @@ async function sendTemplateMessage(
   to: string,
   templateName: string,
   language: string,
-  variables: Record<string, string>
+  variables: {
+    header: Record<string, string>;
+    body: Record<string, string>;
+    footer: Record<string, string>;
+  }
 ): Promise<{ messages: { id: string }[] }> {
   try {
     const whatsappApiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
-    // Build template parameters for variables
-    const templateParameters = [];
-    const sortedVariables = Object.keys(variables)
-      .sort((a, b) => parseInt(a) - parseInt(b))
-      .map(key => variables[key]);
+    // Build template parameters for each component
+    const templateComponents = [];
 
-    if (sortedVariables.length > 0) {
-      templateParameters.push({
-        type: 'body',
-        parameters: sortedVariables.map(value => ({
+    // Add header parameters if header variables exist
+    if (Object.keys(variables.header).length > 0) {
+      const headerParams = Object.keys(variables.header)
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .map(key => ({
           type: 'text',
-          text: value
-        }))
+          text: variables.header[key]
+        }));
+      
+      templateComponents.push({
+        type: 'header',
+        parameters: headerParams
+      });
+    }
+
+    // Add body parameters if body variables exist
+    if (Object.keys(variables.body).length > 0) {
+      const bodyParams = Object.keys(variables.body)
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .map(key => ({
+          type: 'text',
+          text: variables.body[key]
+        }));
+      
+      templateComponents.push({
+        type: 'body',
+        parameters: bodyParams
+      });
+    }
+
+    // Add footer parameters if footer variables exist
+    if (Object.keys(variables.footer).length > 0) {
+      const footerParams = Object.keys(variables.footer)
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .map(key => ({
+          type: 'text',
+          text: variables.footer[key]
+        }));
+      
+      templateComponents.push({
+        type: 'footer',
+        parameters: footerParams
       });
     }
 
@@ -65,7 +105,7 @@ async function sendTemplateMessage(
         language: {
           code: language
         },
-        ...(templateParameters.length > 0 && { components: templateParameters })
+        ...(templateComponents.length > 0 && { components: templateComponents })
       }
     };
 
@@ -145,8 +185,8 @@ export async function POST(request: NextRequest) {
     const bodyComponent = templateData.components.find(c => c.type === 'BODY');
     if (bodyComponent?.text) {
       displayContent = bodyComponent.text;
-      // Replace variables in display content
-      Object.entries(variables).forEach(([key, value]) => {
+      // Replace variables in display content using body variables
+      Object.entries(variables.body).forEach(([key, value]) => {
         displayContent = displayContent.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
       });
     }
@@ -154,7 +194,7 @@ export async function POST(request: NextRequest) {
     // Store message in database
     const timestamp = new Date().toISOString();
     
-    // Process template components for storage
+    // Process template components for storage with variables replaced
     const processedComponents = {
       header: null as {
         format: string;
@@ -175,23 +215,32 @@ export async function POST(request: NextRequest) {
       }>
     };
 
+    // Helper function to replace variables in text
+    const replaceVariables = (text: string, componentVariables: Record<string, string>) => {
+      let result = text;
+      Object.entries(componentVariables).forEach(([key, value]) => {
+        result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+      });
+      return result;
+    };
+
     templateData.components.forEach(component => {
       switch (component.type) {
         case 'HEADER':
           processedComponents.header = {
             format: component.format || 'TEXT',
-            text: component.text,
+            text: component.text ? replaceVariables(component.text, variables.header) : component.text,
             media_url: null // Media URLs would be handled separately for headers with media
           };
           break;
         case 'BODY':
           processedComponents.body = {
-            text: component.text
+            text: component.text ? replaceVariables(component.text, variables.body) : component.text
           };
           break;
         case 'FOOTER':
           processedComponents.footer = {
-            text: component.text
+            text: component.text ? replaceVariables(component.text, variables.footer) : component.text
           };
           break;
         case 'BUTTONS':
