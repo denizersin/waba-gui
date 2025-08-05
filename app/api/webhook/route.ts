@@ -210,30 +210,44 @@ export async function POST(request: NextRequest) {
 
       // Handle media upload to S3 if it's a media message
       let s3MediaUrl = null;
+      let s3UploadSuccess = false;
+      
       if (mediaData && mediaData.id && WHATSAPP_ACCESS_TOKEN) {
         console.log(`Processing media upload for ${messageType}: ${mediaData.id}`);
         
-        // Get WhatsApp media URL first
-        const whatsappMediaUrl = await getWhatsAppMediaUrl(mediaData.id);
-        
-        if (whatsappMediaUrl) {
-          console.log(`Downloading and uploading ${messageType} to S3...`);
+        try {
+          // Get WhatsApp media URL first
+          const whatsappMediaUrl = await getWhatsAppMediaUrl(mediaData.id);
           
-          // Download from WhatsApp and upload to S3
-          s3MediaUrl = await downloadAndUploadToS3(
-            whatsappMediaUrl,
-            phoneNumber, // sender ID for folder structure
-            mediaData.id, // media ID for filename
-            mediaData.mime_type || 'application/octet-stream'
-          );
-          
-          if (s3MediaUrl) {
-            console.log(`Successfully uploaded ${messageType} to S3: ${s3MediaUrl}`);
+          if (whatsappMediaUrl) {
+            console.log(`Downloading and uploading ${messageType} to S3...`);
+            
+            // Validate media ID format (should be numeric)
+            if (!/^\d+$/.test(mediaData.id)) {
+              throw new Error(`Invalid media ID format: ${mediaData.id}`);
+            }
+            
+            // Download from WhatsApp and upload to S3
+            s3MediaUrl = await downloadAndUploadToS3(
+              whatsappMediaUrl,
+              phoneNumber, // sender ID for folder structure
+              mediaData.id, // media ID for filename
+              mediaData.mime_type || 'application/octet-stream',
+              WHATSAPP_ACCESS_TOKEN // Pass access token for authentication
+            );
+            
+            if (s3MediaUrl) {
+              console.log(`Successfully uploaded ${messageType} to S3: ${s3MediaUrl}`);
+              s3UploadSuccess = true;
+            } else {
+              console.error(`Failed to upload ${messageType} to S3`);
+            }
           } else {
-            console.error(`Failed to upload ${messageType} to S3`);
+            console.error(`Failed to get WhatsApp media URL for ${mediaData.id}`);
           }
-        } else {
-          console.error(`Failed to get WhatsApp media URL for ${mediaData.id}`);
+        } catch (error) {
+          console.error(`Error processing media upload for ${mediaData.id}:`, error);
+          // Continue processing the message even if media upload fails
         }
       }
 
@@ -321,8 +335,9 @@ export async function POST(request: NextRequest) {
         media_data: mediaData ? JSON.stringify({
           ...mediaData,
           media_url: s3MediaUrl, // Use S3 URL instead of WhatsApp URL
-          s3_uploaded: !!s3MediaUrl, // Flag to indicate if uploaded to S3
-          upload_timestamp: s3MediaUrl ? new Date().toISOString() : null
+          s3_uploaded: s3UploadSuccess, // Use the success flag instead of just checking URL presence
+          upload_timestamp: s3UploadSuccess ? new Date().toISOString() : null,
+          upload_error: !s3UploadSuccess && mediaData.id ? 'Failed to upload to S3' : null
         }) : null
       };
 
@@ -339,8 +354,9 @@ export async function POST(request: NextRequest) {
           console.log('Media data stored with S3 URL:', {
             type: mediaData.type,
             id: mediaData.id,
-            s3_uploaded: !!s3MediaUrl,
-            has_s3_url: !!s3MediaUrl
+            s3_uploaded: s3UploadSuccess,
+            has_s3_url: !!s3MediaUrl,
+            upload_success: s3UploadSuccess
           });
         }
       }

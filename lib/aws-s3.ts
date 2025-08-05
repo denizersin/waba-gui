@@ -111,33 +111,97 @@ export function isWhatsAppSupportedFileType(mimeType: string): boolean {
 }
 
 /**
- * Download a file from URL and upload to S3
+ * Download file from WhatsApp and upload to S3
+ * Handles authentication for WhatsApp media URLs
  */
 export async function downloadAndUploadToS3(
   fileUrl: string,
   senderId: string,
   mediaId: string,
-  mimeType: string
+  mimeType: string,
+  whatsappAccessToken?: string
 ): Promise<string | null> {
   try {
     console.log(`Downloading file from URL: ${fileUrl}`);
     
-    // Download the file
-    const response = await fetch(fileUrl);
+    // Security validation
+    if (!fileUrl || !senderId || !mediaId || !mimeType) {
+      throw new Error('Missing required parameters for S3 upload');
+    }
+    
+    // Validate sender ID format (should be a phone number)
+    if (!/^\d{10,15}$/.test(senderId)) {
+      throw new Error(`Invalid sender ID format: ${senderId}`);
+    }
+    
+    // Validate media ID format (should be numeric)
+    if (!/^\d+$/.test(mediaId)) {
+      throw new Error(`Invalid media ID format: ${mediaId}`);
+    }
+    
+    // Check if file type is supported by WhatsApp
+    if (!isWhatsAppSupportedFileType(mimeType)) {
+      throw new Error(`Unsupported file type: ${mimeType}`);
+    }
+    
+    // Prepare headers for WhatsApp authentication
+    const headers: Record<string, string> = {};
+    
+    // Check if this is a WhatsApp media URL and add authentication
+    if (fileUrl.includes('lookaside.fbsbx.com') || fileUrl.includes('graph.facebook.com')) {
+      if (whatsappAccessToken) {
+        headers['Authorization'] = `Bearer ${whatsappAccessToken}`;
+        console.log('Added WhatsApp authentication header for media download');
+      } else {
+        throw new Error('WhatsApp media URL detected but no access token provided');
+      }
+    }
+    
+    // Download the file with proper authentication and timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
+    const response = await fetch(fileUrl, {
+      method: 'GET',
+      headers: headers,
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+    }
+
+    // Validate content type
+    const contentType = response.headers.get('content-type');
+    if (contentType && !contentType.startsWith(mimeType.split('/')[0])) {
+      console.warn(`Content type mismatch: expected ${mimeType}, got ${contentType}`);
     }
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     
-    // Generate S3 key
+    // Validate file size (25MB limit for WhatsApp)
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    if (buffer.length > maxSize) {
+      throw new Error(`File too large: ${buffer.length} bytes (max: ${maxSize})`);
+    }
+    
+    if (buffer.length === 0) {
+      throw new Error('Downloaded file is empty');
+    }
+    
+    console.log(`Downloaded file: ${buffer.length} bytes`);
+    
+    // Generate S3 key with sanitized sender ID
     const fileExtension = getFileExtensionFromMimeType(mimeType);
-    const s3Key = `${senderId}/${mediaId}.${fileExtension}`;
+    const sanitizedSenderId = senderId.replace(/[^0-9]/g, ''); // Remove non-numeric chars
+    const s3Key = `${sanitizedSenderId}/${mediaId}.${fileExtension}`;
 
     console.log(`Uploading to S3: ${s3Key} (${buffer.length} bytes)`);
 
-    // Upload to S3
+    // Upload to S3 with enhanced metadata
     const uploadCommand = new PutObjectCommand({
       Bucket: BUCKET_NAME,
       Key: s3Key,
@@ -145,9 +209,12 @@ export async function downloadAndUploadToS3(
       ContentType: mimeType,
       ACL: 'private',
       Metadata: {
-        'sender-id': senderId,
+        'sender-id': sanitizedSenderId,
         'media-id': mediaId,
         'upload-timestamp': new Date().toISOString(),
+        'original-url': fileUrl,
+        'file-size': buffer.length.toString(),
+        'content-type': mimeType,
       },
     });
 
@@ -155,7 +222,7 @@ export async function downloadAndUploadToS3(
     console.log('S3 upload successful');
 
     // Generate presigned URL
-    const presignedUrl = await generatePresignedUrl(senderId, mediaId, mimeType);
+    const presignedUrl = await generatePresignedUrl(sanitizedSenderId, mediaId, mimeType);
     return presignedUrl;
 
   } catch (error) {

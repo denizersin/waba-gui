@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate phone number format (E.164 format)
-    const phoneRegex = /^\[1-9]\d{1,14}$/;
+    const phoneRegex = /^\+[1-9]\d{1,14}$/;
     if (!phoneRegex.test(cleanPhoneNumber)) {
       return new NextResponse(
         JSON.stringify({ 
