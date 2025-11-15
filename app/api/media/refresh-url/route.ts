@@ -57,14 +57,17 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Invalid media data', { status: 400 });
     }
 
-    // Check if media was uploaded to S3
-    if (!mediaData.s3_uploaded || !mediaData.id || !mediaData.mime_type) {
-      return new NextResponse('Media not available in S3', { status: 400 });
+    // Check that media has the required identifiers
+    if (!mediaData.id || !mediaData.mime_type) {
+      return new NextResponse('Media data incomplete', { status: 400 });
     }
 
+    // Determine which identifier was used as the S3 owner when the media was stored
+    const ownerIdForS3 = message.is_sent_by_me ? message.receiver_id : message.sender_id;
+
     // Generate new pre-signed URL
-    const newUrl = generatePresignedUrl(
-      message.sender_id,
+    const newUrl = await generatePresignedUrl(
+      ownerIdForS3,
       mediaData.id,
       mediaData.mime_type
     );
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest) {
     const updatedMediaData = {
       ...mediaData,
       media_url: newUrl,
+      s3_uploaded: true,
       url_refreshed_at: new Date().toISOString()
     };
 
