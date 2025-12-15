@@ -78,7 +78,9 @@ export async function POST(request: NextRequest) {
 
     // Prepare WhatsApp API request
     const whatsappApiUrl = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
-    
+    console.log('WhatsApp API URL:', whatsappApiUrl);
+    console.log(cleanPhoneNumber, 'cleanPhoneNumber');
+
     const messageData = {
       messaging_product: 'whatsapp',
       to: cleanPhoneNumber, // Use cleaned phone number
@@ -94,6 +96,8 @@ export async function POST(request: NextRequest) {
       message: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
       userId: user.id
     });
+
+    console.log('Message Data:', messageData);
 
     // Send message via WhatsApp Cloud API using user-specific access token
     const whatsappResponse = await fetch(whatsappApiUrl, {
