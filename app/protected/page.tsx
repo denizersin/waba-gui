@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createFrontendClient } from "@/lib/supabase/client";
 import { UserList } from "@/components/chat/user-list";
 import { ChatWindow } from "@/components/chat/chat-window";
 import { User } from "@supabase/supabase-js";
@@ -62,7 +62,7 @@ export default function ChatPage() {
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [broadcastGroupId, setBroadcastGroupId] = useState<string | null>(null);
   const [broadcastGroupName, setBroadcastGroupName] = useState<string | null>(null);
-  const supabase = createClient();
+  const supabase = createFrontendClient();
 
   // Define handleBackToUsers early so it can be used in useEffect
   const handleBackToUsers = useCallback(() => {
@@ -137,6 +137,8 @@ export default function ChatPage() {
         .order('has_unread', { ascending: false })
         .order('last_message_time', { ascending: false });
       
+
+      console.log(data,'conversation data');
       if (error) {
         console.error('Error fetching users:', error);
         return;
@@ -237,21 +239,41 @@ export default function ChatPage() {
         event: '*', 
         schema: 'public', 
         table: 'messages' 
-      }, (payload) => {
+      }, async (payload) => {
         console.log('Messages table change:', payload.eventType);
         
         // Update specific user in list based on message change
         const message = payload.new as MessagePayload;
         if (message) {
           const otherUserId = message.sender_id === user?.id ? message.receiver_id : message.sender_id;
+          const isFromMe = message.sender_id === user?.id;
+          const isCurrentlyViewing = selectedUser?.id === otherUserId;
+          
+          // Recalculate unread count from database for accuracy
+          let actualUnreadCount = 0;
+          if (!isFromMe && !isCurrentlyViewing) {
+            try {
+              const { data: unreadData, error: unreadError } = await supabase
+                .from('user_conversations')
+                .select('unread_count')
+                .eq('id', otherUserId)
+                .single();
+              
+              if (!unreadError && unreadData) {
+                actualUnreadCount = unreadData.unread_count || 0;
+                console.log(`Recalculated unread count for ${otherUserId}: ${actualUnreadCount}`);
+              }
+            } catch (error) {
+              console.error('Error fetching unread count:', error);
+              // Fallback to optimistic increment if query fails
+              actualUnreadCount = -1; // Signal to use fallback
+            }
+          }
           
           // Update the specific user's last message and unread count
           setUsers((prevUsers) => {
             const updatedUsers = prevUsers.map(u => {
               if (u.id === otherUserId) {
-                const isFromMe = message.sender_id === user?.id;
-                // Don't increment unread count if this conversation is currently open
-                const isCurrentlyViewing = selectedUser?.id === otherUserId;
                 const shouldIncrementUnread = !isFromMe && !isCurrentlyViewing;
                 
                 return {
@@ -260,8 +282,10 @@ export default function ChatPage() {
                   last_message_time: message.timestamp,
                   last_message_type: message.message_type || 'text',
                   last_message_sender: message.sender_id,
-                  // Increment unread count only if message is from other user and not currently viewing
-                  unread_count: shouldIncrementUnread ? (u.unread_count || 0) + 1 : u.unread_count
+                  // Use recalculated unread count if available, otherwise increment optimistically
+                  unread_count: shouldIncrementUnread 
+                    ? (actualUnreadCount >= 0 ? actualUnreadCount : (u.unread_count || 0) + 1)
+                    : u.unread_count
                 };
               }
               return u;
@@ -278,7 +302,7 @@ export default function ChatPage() {
           });
         }
         
-        // Also debounce a full refresh as fallback
+        // Also debounce a full refresh as fallback for any edge cases
         setTimeout(fetchUsers, 2000);
       })
       .subscribe();
@@ -304,6 +328,8 @@ export default function ChatPage() {
       const { data, error } = await supabase.rpc('get_conversation_messages', {
         other_user_id: selectedUser.id
       });
+
+      console.log(data,'conversation messages data');
       
       if (error) {
         console.error('Error fetching messages:', error);
@@ -311,6 +337,7 @@ export default function ChatPage() {
         console.error('Selected user ID:', selectedUser.id);
         console.error('Current user ID:', user.id);
       } else {
+        console.log(data,'data');
         console.log(`Fetched ${data?.length || 0} messages`);
         // Map message_timestamp back to timestamp for the interface and ensure is_sent_by_me is set
         const mappedMessages = (data || []).map((msg: MessagePayload & { message_timestamp?: string; is_sent_by_me?: boolean }) => ({
@@ -535,6 +562,7 @@ export default function ChatPage() {
     setBroadcastGroupName(null);
     
     setSelectedUser(selectedUser);
+    console.log(selectedUser,'selectedUser');
     
     // Immediately clear unread count in UI for better UX
     if (selectedUser.unread_count && selectedUser.unread_count > 0) {

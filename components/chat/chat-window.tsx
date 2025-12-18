@@ -972,6 +972,9 @@ export function ChatWindow({
     }
   };
 
+
+  console.log(messages);
+
   // Group messages by date
   const groupedMessages = messages.reduce((groups: { [key: string]: Message[] }, message) => {
     const date = new Date(message.timestamp).toDateString();

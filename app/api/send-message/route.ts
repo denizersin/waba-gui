@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       .select('access_token, phone_number_id, api_version, access_token_added')
       .eq('id', user.id)
       .single();
+      console.log('Sending message: USER ID', user.id);
 
     if (settingsError || !settings) {
       console.error('User settings not found:', settingsError);
@@ -134,8 +135,8 @@ export async function POST(request: NextRequest) {
     // Note: sender_id is phone number (TEXT), receiver_id is auth user (UUID)
     const messageObject = {
       id: messageId || `outgoing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: cleanPhoneNumber, // Recipient phone number (sender in DB)
-      receiver_id: user.id, // Current authenticated user (receiver in DB)
+      sender_id: user.id, // Recipient phone number (sender in DB)
+      receiver_id: cleanPhoneNumber, // Current authenticated user (receiver in DB)
       content: message,
       timestamp: timestamp,
       is_sent_by_me: true,
@@ -143,6 +144,36 @@ export async function POST(request: NextRequest) {
       message_type: 'text', // For now, we only send text messages
       media_data: null // No media data for text messages
     };
+
+    // Ensure the authenticated user exists in the users table BEFORE inserting the message
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .upsert([{
+        id: user.id,
+        name: user.user_metadata?.full_name || user.email || 'Unknown User',
+        last_active: timestamp
+      }], {
+        onConflict: 'id'
+      });
+
+    if (userUpdateError) {
+      console.error('Error updating user last_active:', userUpdateError);
+    }
+
+    // Also ensure the recipient exists in the users table (for sender_id)
+    const { error: recipientUpdateError } = await supabase
+      .from('users')
+      .upsert([{
+        id: cleanPhoneNumber,
+        name: cleanPhoneNumber, // Use phone number as name if we don't have better info
+        last_active: timestamp
+      }], {
+        onConflict: 'id'
+      });
+
+    if (recipientUpdateError) {
+      console.error('Error updating recipient user:', recipientUpdateError);
+    }
 
     console.log('Storing message in database:', {
       id: messageObject.id,
@@ -165,21 +196,6 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if database storage fails, message was already sent
     } else {
       console.log('Message stored successfully in database:', insertedMessage?.id);
-    }
-
-    // Update last_active for the sender (current user)
-    const { error: userUpdateError } = await supabase
-      .from('users')
-      .upsert([{
-        id: user.id,
-        name: user.user_metadata?.full_name || user.email || 'Unknown User',
-        last_active: timestamp
-      }], {
-        onConflict: 'id'
-      });
-
-    if (userUpdateError) {
-      console.error('Error updating user last_active:', userUpdateError);
     }
 
     // Return success response

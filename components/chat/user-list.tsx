@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Search, MessageCircle, LogOut, Plus, Edit3, Check, X, Phone, FileText, Settings, Users } from "lucide-react";
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createFrontendClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GroupsList } from "./groups-list";
@@ -64,12 +64,12 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
   const [showGroupDialog, setShowGroupDialog] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   
-  const supabase = createClient();
+  const supabase = createFrontendClient();
   const router = useRouter();
 
   // Load groups on component mount
   useEffect(() => {
-    loadGroups();
+    // loadGroups();
   }, []);
 
   const loadGroups = async () => {

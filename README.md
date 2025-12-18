@@ -539,8 +539,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Function: Get conversation messages
-CREATE OR REPLACE FUNCTION get_conversation_messages(other_user_id TEXT)
+-- Function: Get conversation messages (DÜZELTİLMİŞ)
+CREATE OR REPLACE FUNCTION get_conversation_messages(
+  other_user_id TEXT,
+  current_user_phone TEXT DEFAULT NULL
+)
 RETURNS TABLE (
   id TEXT,
   sender_id TEXT,
@@ -561,7 +564,7 @@ BEGIN
     m.receiver_id,
     m.content,
     m.timestamp as message_timestamp,
-    (m.sender_id = (SELECT id FROM auth.users() LIMIT 1)) as is_sent_by_me,
+    (m.sender_id = COALESCE(current_user_phone, other_user_id)) as is_sent_by_me,
     m.message_type,
     m.media_data,
     m.is_read,

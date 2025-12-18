@@ -13,10 +13,10 @@ values
   ('It was awesome!');
 `.trim();
 
-const server = `import { createClient } from '@/utils/supabase/server'
+const server = `import { createFrontendClient } from '@/utils/supabase/server'
 
 export default async function Page() {
-  const supabase = await createClient()
+  const supabase = await createFrontendClient()
   const { data: notes } = await supabase.from('notes').select()
 
   return <pre>{JSON.stringify(notes, null, 2)}</pre>
@@ -25,12 +25,12 @@ export default async function Page() {
 
 const client = `'use client'
 
-import { createClient } from '@/utils/supabase/client'
+import { createFrontendClient } from '@/utils/supabase/client'
 import { useEffect, useState } from 'react'
 
 export default function Page() {
   const [notes, setNotes] = useState<any[] | null>(null)
-  const supabase = createClient()
+  const supabase = createFrontendClient()
 
   useEffect(() => {
     const getData = async () => {
