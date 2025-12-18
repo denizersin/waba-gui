@@ -11,6 +11,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GroupsList } from "./groups-list";
 import { GroupManagementDialog } from "./group-management-dialog";
+import { DebouncedInput } from "../custom-ui/debounced-input";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 interface ChatUser {
   id: string;
@@ -58,12 +60,13 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
   const [editingName, setEditingName] = useState("");
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [isUpdatingName, setIsUpdatingName] = useState(false);
-  
+  const [searchResults, setSearchResults] = useState<ChatUser[]>([]);
+
   // Groups state
   const [groups, setGroups] = useState<Group[]>([]);
   const [showGroupDialog, setShowGroupDialog] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
-  
+
   const supabase = createFrontendClient();
   const router = useRouter();
 
@@ -76,7 +79,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
     try {
       const response = await fetch('/api/groups');
       const data = await response.json();
-      
+
       if (data.success && data.groups) {
         setGroups(data.groups);
       }
@@ -106,7 +109,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
     const date = new Date(timestamp);
     const now = new Date();
     const diffInHours = Math.abs(now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
+
     if (diffInHours < 24) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (diffInHours < 168) { // 7 days
@@ -125,7 +128,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
     if (user.last_message_type && user.last_message_type !== 'text') {
       const isFromCurrentUser = user.last_message_sender === currentUserId;
       const prefix = isFromCurrentUser ? "You: " : "";
-      
+
       switch (user.last_message_type) {
         case 'image':
           return `${prefix}📷 Photo`;
@@ -144,7 +147,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
     const message = user.last_message || "";
     const isFromCurrentUser = user.last_message_sender === currentUserId;
     const prefix = isFromCurrentUser ? "You: " : "";
-    
+
     return `${prefix}${message.length > 30 ? message.substring(0, 30) + "..." : message}`;
   };
 
@@ -155,18 +158,25 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
       // First, prioritize users with unread messages
       if ((a.unread_count || 0) > 0 && (b.unread_count || 0) === 0) return -1;
       if ((a.unread_count || 0) === 0 && (b.unread_count || 0) > 0) return 1;
-      
+
       // Then sort by last message time
       const aTime = new Date(a.last_message_time || a.last_active).getTime();
       const bTime = new Date(b.last_message_time || b.last_active).getTime();
       return bTime - aTime;
     });
 
-  const filteredUsers = sortedUsers.filter(user => {
-    const displayName = getDisplayName(user);
-    const searchableText = `${displayName} ${user.whatsapp_name || ''} ${user.id}`.toLowerCase();
-    return searchableText.includes(searchTerm.toLowerCase());
-  });
+  // Use search results if search term exists and we have results from RPC
+  // Otherwise use local filtering for empty search or as fallback
+  const filteredUsers = searchTerm.trim() && searchResults.length >= 0
+    ? searchResults.filter(user => user.id !== currentUserId).sort((a, b) => {
+        // Apply same sorting to search results
+        if ((a.unread_count || 0) > 0 && (b.unread_count || 0) === 0) return -1;
+        if ((a.unread_count || 0) === 0 && (b.unread_count || 0) > 0) return 1;
+        const aTime = new Date(a.last_message_time || a.last_active).getTime();
+        const bTime = new Date(b.last_message_time || b.last_active).getTime();
+        return bTime - aTime;
+      })
+    : sortedUsers;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -184,7 +194,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
   };
 
   const handleUpdateUserInput = (id: string, field: 'phoneNumber' | 'customName', value: string) => {
-    setNewUsers(newUsers.map(user => 
+    setNewUsers(newUsers.map(user =>
       user.id === id ? { ...user, [field]: value } : user
     ));
   };
@@ -192,7 +202,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
   const handleCreateNewChat = async () => {
     // Filter out empty entries
     const validUsers = newUsers.filter(u => u.phoneNumber.trim());
-    
+
     if (validUsers.length === 0) {
       alert('Please enter at least one phone number');
       return;
@@ -220,7 +230,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
         }
 
         console.log('Chat created successfully:', result);
-        
+
         // Reset form
         setNewUsers([{ id: '1', phoneNumber: '', customName: '' }]);
         setShowNewChat(false);
@@ -255,22 +265,22 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
         }
 
         console.log('Bulk chat creation result:', result.results);
-        
+
         // Show summary
         const successCount = result.results.successCount;
         const failedCount = result.results.failedCount;
-        
+
         let message = `Successfully added ${successCount} user${successCount !== 1 ? 's' : ''}`;
-        
+
         if (failedCount > 0) {
           message += `\n\nFailed to add ${failedCount} user${failedCount !== 1 ? 's' : ''}:`;
           result.results.failed.forEach((failure: { phoneNumber: string; error: string }) => {
             message += `\n- ${failure.phoneNumber}: ${failure.error}`;
           });
         }
-        
+
         alert(message);
-        
+
         // Reset form
         setNewUsers([{ id: '1', phoneNumber: '', customName: '' }]);
         setShowNewChat(false);
@@ -315,7 +325,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
       }
 
       console.log('Name updated successfully:', result);
-      
+
       // Reset editing state
       setEditingUserId(null);
       setEditingName("");
@@ -388,6 +398,47 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
       onUserSelect(user);
     }
   };
+
+  async function handleSearchChange(value: string) {
+    setSearchTerm(value);
+    
+    // If search is empty, clear search results
+    if (!value.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    const { data, error } = await supabase
+      .rpc('search_user_conversations', {
+        p_user_id: currentUserId,
+        search_term: value
+      });
+
+    if (error) {
+      console.error("Search error:", error);
+      return;
+    }
+
+    if (data) {
+      console.log("Search results:", data);
+      
+      // Transform search results to ChatUser format (same as in page.tsx)
+      const transformedResults: ChatUser[] = data.map((user: any) => ({
+        id: user.id,
+        name: user.display_name,
+        custom_name: user.custom_name,
+        whatsapp_name: user.whatsapp_name,
+        last_active: user.last_active,
+        unread_count: user.unread_count || 0,
+        last_message_time: user.last_message_time,
+        last_message: user.last_message,
+        last_message_type: user.last_message_type,
+        last_message_sender: user.last_message_sender
+      }));
+      
+      setSearchResults(transformedResults);
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -469,7 +520,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            
+
             {/* User Inputs */}
             <div className="space-y-3">
               {newUsers.map((user, index) => (
@@ -551,7 +602,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                 Cancel
               </Button>
             </div>
-            
+
             {/* Helper Text */}
             <p className="text-xs text-muted-foreground text-center">
               {newUsers.filter(u => u.phoneNumber.trim()).length} user{newUsers.filter(u => u.phoneNumber.trim()).length !== 1 ? 's' : ''} to add
@@ -565,12 +616,20 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
       <div className="p-4 border-b border-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-          <input
+          {/* <input
             type="text"
             placeholder="Search conversations..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-green-500"
+          /> */}
+          <DebouncedInput
+            placeholder="Search conversations..."
+            value={searchTerm}
+            debounceMs={1500}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-green-500"
+
           />
         </div>
       </div>
@@ -611,9 +670,8 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
           filteredUsers.map((user) => (
             <div
               key={user.id}
-              className={`group p-4 border-b border-border cursor-pointer hover:bg-muted/50 transition-all duration-200 ${
-                selectedUser?.id === user.id ? "bg-muted" : ""
-              }`}
+              className={`group p-4 border-b border-border cursor-pointer hover:bg-muted/50 transition-all duration-200 ${selectedUser?.id === user.id ? "bg-muted" : ""
+                }`}
             >
               <div className="flex items-center gap-3">
                 <Avatar className="h-12 w-12">
@@ -621,7 +679,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                     {getDisplayName(user).charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                
+
                 <div className="flex-1 min-w-0" onClick={() => onUserSelect(user)}>
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
@@ -663,9 +721,8 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <h3 className={`font-medium truncate ${
-                            (user.unread_count || 0) > 0 ? "font-semibold" : ""
-                          }`}>
+                          <h3 className={`font-medium truncate ${(user.unread_count || 0) > 0 ? "font-semibold" : ""
+                            }`}>
                             {getDisplayName(user)}
                           </h3>
                           <Button
@@ -682,7 +739,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                           </Button>
                         </div>
                       )}
-                      
+
                       {/* Secondary name display */}
                       {getSecondaryName(user) && (
                         <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
@@ -697,7 +754,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                         </p>
                       )}
                     </div>
-                    
+
                     <div className="flex items-center gap-2 ml-2">
                       <span className="text-xs text-muted-foreground">
                         {formatTime(user.last_message_time || user.last_active)}
@@ -709,10 +766,9 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                       )}
                     </div>
                   </div>
-                  
-                  <p className={`text-sm text-muted-foreground truncate mt-1 ${
-                    (user.unread_count || 0) > 0 ? "font-medium text-foreground" : ""
-                  }`}>
+
+                  <p className={`text-sm text-muted-foreground truncate mt-1 ${(user.unread_count || 0) > 0 ? "font-medium text-foreground" : ""
+                    }`}>
                     {getMessagePreview(user)}
                   </p>
                 </div>
