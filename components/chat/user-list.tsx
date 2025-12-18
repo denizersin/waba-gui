@@ -91,7 +91,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
   // Helper functions defined first to avoid hoisting issues
   const getDisplayName = (user: ChatUser) => {
     // Priority: custom_name > whatsapp_name > phone number
-    return user.custom_name || user.whatsapp_name || user.id;
+    return user.name || user.custom_name || user.whatsapp_name || user.id;
   };
 
   const getSecondaryName = (user: ChatUser) => {
@@ -100,7 +100,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
       return user.whatsapp_name;
     }
     if (user.whatsapp_name && user.whatsapp_name !== user.id) {
-      return user.id;
+      return user.whatsapp_name;
     }
     return null;
   };
@@ -169,13 +169,13 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
   // Otherwise use local filtering for empty search or as fallback
   const filteredUsers = searchTerm.trim() && searchResults.length >= 0
     ? searchResults.filter(user => user.id !== currentUserId).sort((a, b) => {
-        // Apply same sorting to search results
-        if ((a.unread_count || 0) > 0 && (b.unread_count || 0) === 0) return -1;
-        if ((a.unread_count || 0) === 0 && (b.unread_count || 0) > 0) return 1;
-        const aTime = new Date(a.last_message_time || a.last_active).getTime();
-        const bTime = new Date(b.last_message_time || b.last_active).getTime();
-        return bTime - aTime;
-      })
+      // Apply same sorting to search results
+      if ((a.unread_count || 0) > 0 && (b.unread_count || 0) === 0) return -1;
+      if ((a.unread_count || 0) === 0 && (b.unread_count || 0) > 0) return 1;
+      const aTime = new Date(a.last_message_time || a.last_active).getTime();
+      const bTime = new Date(b.last_message_time || b.last_active).getTime();
+      return bTime - aTime;
+    })
     : sortedUsers;
 
   const handleLogout = async () => {
@@ -401,13 +401,13 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
 
   async function handleSearchChange(value: string) {
     setSearchTerm(value);
-    
+
     // If search is empty, clear search results
     if (!value.trim()) {
       setSearchResults([]);
       return;
     }
-    
+
     const { data, error } = await supabase
       .rpc('search_user_conversations', {
         p_user_id: currentUserId,
@@ -421,7 +421,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
 
     if (data) {
       console.log("Search results:", data);
-      
+
       // Transform search results to ChatUser format (same as in page.tsx)
       const transformedResults: ChatUser[] = data.map((user: any) => ({
         id: user.id,
@@ -435,10 +435,14 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
         last_message_type: user.last_message_type,
         last_message_sender: user.last_message_sender
       }));
-      
+
       setSearchResults(transformedResults);
     }
   }
+
+
+  console.log(filteredUsers, 'filteredUsers');
+  console.log(searchResults, 'searchResults');
 
   return (
     <div className="h-full flex flex-col bg-background">
