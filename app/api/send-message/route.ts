@@ -10,10 +10,10 @@ import { createClient } from '@/lib/supabase/server';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Verify user authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const { data: { user: senderUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !senderUser) {
       console.error('Authentication error:', authError);
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -36,14 +36,14 @@ export async function POST(request: NextRequest) {
     // Clean and validate phone number format for WhatsApp API
     // WhatsApp expects phone numbers without + prefix, with country code
     const cleanPhoneNumber = to.replace(/\s+/g, '').replace(/[^\d]/g, ''); // Remove all non-digits including +
-    
+
     // Validate phone number format (10-15 digits without + prefix)
     const phoneRegex = /^\d{10,15}$/;
     if (!phoneRegex.test(cleanPhoneNumber)) {
       return NextResponse.json(
-        { 
-          error: 'Invalid phone number format', 
-          message: 'Phone number must contain 10-15 digits (e.g., 918097296453)' 
+        {
+          error: 'Invalid phone number format',
+          message: 'Phone number must contain 10-15 digits (e.g., 918097296453)'
         },
         { status: 400 }
       );
@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
     const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
       .select('access_token, phone_number_id, api_version, access_token_added')
-      .eq('id', user.id)
+      .eq('id', senderUser.id)
       .single();
-      console.log('Sending message: USER ID', user.id);
+    console.log('Sending message: USER ID', senderUser.id);
 
     if (settingsError || !settings) {
       console.error('User settings not found:', settingsError);
@@ -66,12 +66,56 @@ export async function POST(request: NextRequest) {
     }
 
     if (!settings.access_token_added || !settings.access_token || !settings.phone_number_id) {
-      console.error('WhatsApp API credentials not configured for user:', user.id);
+      console.error('WhatsApp API credentials not configured for user:', senderUser.id);
       return NextResponse.json(
         { error: 'WhatsApp Access Token not configured. Please complete setup.' },
         { status: 400 }
       );
     }
+
+
+
+
+
+    //check user exists in the users table
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', cleanPhoneNumber)
+      .maybeSingle();
+
+
+    if (userError) {
+      console.error('Error checking user exists in the users table:', userError);
+      return NextResponse.json(
+        { error: 'Error checking user exists in the users table' },
+        { status: 500 }
+      );
+    }
+
+    if (!userData) {
+      console.log('User does not exist in the users table, inserting user:', cleanPhoneNumber);
+      const { error: userInsertError } = await supabase
+        .from('users')
+        .insert([{
+          id: cleanPhoneNumber,
+          name: cleanPhoneNumber,
+          last_active: new Date().toISOString()
+        }]);
+      if (userInsertError) {
+        console.error('Error inserting user into the users table:', userInsertError);
+        return NextResponse.json(
+          { error: 'Error inserting user into the users table' },
+          { status: 500 }
+        );
+      }else{
+        console.log('User inserted into the users table:', cleanPhoneNumber);
+      }
+
+    }
+
+
+
 
     const accessToken = settings.access_token;
     const phoneNumberId = settings.phone_number_id;
@@ -95,7 +139,7 @@ export async function POST(request: NextRequest) {
       to: cleanPhoneNumber,
       originalTo: to,
       message: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
-      userId: user.id
+      userId: senderUser.id
     });
 
     console.log('Message Data:', messageData);
@@ -117,10 +161,10 @@ export async function POST(request: NextRequest) {
     if (!whatsappResponse.ok) {
       console.error('WhatsApp API error:', responseData);
       return NextResponse.json(
-        { 
-          error: 'Failed to send message via WhatsApp API', 
-          details: responseData 
-        }, 
+        {
+          error: 'Failed to send message via WhatsApp API',
+          details: responseData
+        },
         { status: whatsappResponse.status }
       );
     }
@@ -135,7 +179,7 @@ export async function POST(request: NextRequest) {
     // Note: sender_id is phone number (TEXT), receiver_id is auth user (UUID)
     const messageObject = {
       id: messageId || `outgoing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      sender_id: user.id, // Recipient phone number (sender in DB)
+      sender_id: senderUser.id, // Recipient phone number (sender in DB)
       receiver_id: cleanPhoneNumber, // Current authenticated user (receiver in DB)
       content: message,
       timestamp: timestamp,
@@ -145,12 +189,14 @@ export async function POST(request: NextRequest) {
       media_data: null // No media data for text messages
     };
 
+
+
     // Ensure the authenticated user exists in the users table BEFORE inserting the message
     const { error: userUpdateError } = await supabase
       .from('users')
       .upsert([{
-        id: user.id,
-        name: user.user_metadata?.full_name || user.email || 'Unknown User',
+        id: cleanPhoneNumber,
+        name: cleanPhoneNumber,
         last_active: timestamp
       }], {
         onConflict: 'id'
@@ -210,10 +256,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error in send-message API:', error);
     return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
-      }, 
+      {
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
@@ -225,7 +271,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   try {
     const supabase = await createClient();
-    
+
     // Verify user authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -244,7 +290,7 @@ export async function GET() {
 
     const isConfigured = settings?.access_token_added || false;
     const apiVersion = settings?.api_version || 'v23.0';
-    
+
     return NextResponse.json({
       status: 'WhatsApp Send Message API',
       configured: isConfigured,

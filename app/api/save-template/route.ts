@@ -119,9 +119,10 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
+        const serviceRoleClient = await createServiceRoleClient();  
 
         // Get user's WhatsApp API credentials
-        const { data: settings, error: settingsError } = await createServiceRoleClient()
+        const { data: settings, error: settingsError } = await serviceRoleClient
             .from('user_settings')
             .select('access_token, phone_number_id, api_version, access_token_added')
             .eq('id', userId)
@@ -142,6 +143,54 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
+
+
+
+
+
+        //check user exists in the users table
+        const { data: userData, error: userError } = await serviceRoleClient
+            .from('users')
+            .select('id')
+            .eq('id', to)
+            .maybeSingle();
+
+
+        if (userError) {
+            console.error('Error checking user exists in the users table:', userError);
+            return NextResponse.json(
+                { error: 'Error checking user exists in the users table' },
+                { status: 500 }
+            );
+        }
+
+        if (!userData) {
+            console.log('User does not exist in the users table, inserting user:', to);
+            const { error: userInsertError } = await serviceRoleClient
+                .from('users')
+                .insert([{
+                    id: to,
+                    name: to,
+                    last_active: new Date().toISOString()
+                }]);
+            if (userInsertError) {
+                console.error('Error inserting user into the users table:', userInsertError);
+                return NextResponse.json(
+                    { error: 'Error inserting user into the users table' },
+                    { status: 500 }
+                );
+            } else {
+                console.log('User inserted into the users table:', to);
+            }
+
+        }
+
+
+
+
+
+
+
 
         const accessToken = settings.access_token;
         const phoneNumberId = settings.phone_number_id;
@@ -225,7 +274,7 @@ export async function POST(request: NextRequest) {
             }),
         };
 
-        const { error: dbError } = await createServiceRoleClient()
+        const { error: dbError } = await serviceRoleClient
             .from('messages')
             .insert([messageObject]);
 
