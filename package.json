@@ -25,7 +25,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.3.0",
-    "use-debounce": "^10.0.6"
+    "use-debounce": "^10.0.6",
+    "uuidv7": "^1.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

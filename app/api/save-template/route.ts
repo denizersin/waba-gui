@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { env } from 'process';
+import { uuidv7 } from 'uuidv7';
 
 interface SendTemplateRequest {
     language: string;
@@ -20,115 +21,6 @@ interface SendTemplateRequest {
 /**
  * Send template message via WhatsApp Cloud API using user-specific credentials
  */
-async function sendTemplateMessage(
-    to: string,
-    templateName: string,
-    language: string,
-    accessToken: string,
-    phoneNumberId: string,
-    apiVersion: string,
-    variables: {
-        header: Record<string, string>;
-        body: Record<string, string>;
-        footer: Record<string, string>;
-    }
-): Promise<{ messages: { id: string }[] }> {
-    try {
-        const whatsappApiUrl = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
-
-        // Build template parameters for each component
-        const templateComponents = [];
-
-        // Add header parameters if header variables exist
-        if (Object.keys(variables.header).length > 0) {
-            const headerParams = Object.keys(variables.header)
-                .sort((a, b) => parseInt(a) - parseInt(b))
-                .map(key => ({
-                    type: 'text',
-                    text: variables.header[key]
-                }));
-
-            templateComponents.push({
-                type: 'header',
-                parameters: headerParams
-            });
-        }
-
-        // Add body parameters if body variables exist
-        if (Object.keys(variables.body).length > 0) {
-            const bodyParams = Object.keys(variables.body)
-                .sort((a, b) => parseInt(a) - parseInt(b))
-                .map(key => ({
-                    type: 'text',
-                    text: variables.body[key]
-                }));
-
-            templateComponents.push({
-                type: 'body',
-                parameters: bodyParams
-            });
-        }
-
-        // Add footer parameters if footer variables exist
-        if (Object.keys(variables.footer).length > 0) {
-            const footerParams = Object.keys(variables.footer)
-                .sort((a, b) => parseInt(a) - parseInt(b))
-                .map(key => ({
-                    type: 'text',
-                    text: variables.footer[key]
-                }));
-
-            templateComponents.push({
-                type: 'footer',
-                parameters: footerParams
-            });
-        }
-
-        const messageData = {
-            messaging_product: 'whatsapp',
-            to: to,
-            type: 'template',
-            template: {
-                name: templateName,
-                language: {
-                    code: language
-                },
-                ...(templateComponents.length > 0 && { components: templateComponents })
-            }
-        };
-
-        console.log('Sending template message:', JSON.stringify(messageData, null, 2));
-
-        const response = await fetch(whatsappApiUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(messageData),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('WhatsApp template message send failed:', {
-                status: response.status,
-                statusText: response.statusText,
-                error: errorText,
-                templateName,
-                to
-            });
-            throw new Error(`Failed to send template message: ${errorText}`);
-        }
-
-        const result = await response.json();
-        console.log('Template message sent successfully:', result);
-        return result;
-
-    } catch (error) {
-        console.error('Error sending template message:', error);
-        throw error;
-    }
-}
 
 
 async function sendTemplateMessagev2(
@@ -203,7 +95,9 @@ async function sendTemplateMessagev2(
  * Now uses user-specific access tokens and phone number IDs
  */
 export async function POST(request: NextRequest) {
-    console.log('send-template API called');
+
+    console.log('save-template API called');
+
     try {
         let userId = env.TURK_USER_ID;
 
@@ -256,20 +150,20 @@ export async function POST(request: NextRequest) {
         console.log(`Sending template message: ${templateName} to ${to}`);
 
         // Send template message via WhatsApp using user-specific credentials
-        const messageResponse = await sendTemplateMessagev2(
-            to,
-            templateName,
-            templateData.language,
-            accessToken,
-            phoneNumberId,
-            apiVersion,
-            templateData.components
-        );
-        const messageId = messageResponse.messages?.[0]?.id;
+        // const messageResponse = await sendTemplateMessagev2(
+        //     to,
+        //     templateName,
+        //     templateData.language,
+        //     accessToken,
+        //     phoneNumberId,
+        //     apiVersion,
+        //     templateData.components
+        // );
+        // const messageId = messageResponse.messages?.[0]?.id;
 
-        if (!messageId) {
-            throw new Error('No message ID returned from WhatsApp API');
-        }
+        // if (!messageId) {
+        //     throw new Error('No message ID returned from WhatsApp API');
+        // }
 
         // Generate content for display in chat
 
@@ -308,7 +202,7 @@ export async function POST(request: NextRequest) {
 
 
         const messageObject = {
-            id: messageId,
+            id: uuidv7(),
             sender_id: userId, // Recipient phone number (sender in DB)
             receiver_id: to, // Current authenticated user (receiver in DB)
             content: displayContent,
@@ -344,7 +238,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            messageId: messageId,
+            messageId: messageObject.id,
             templateName: templateName,
             displayContent: displayContent,
             timestamp: timestamp,
