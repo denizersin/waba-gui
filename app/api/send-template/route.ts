@@ -276,7 +276,7 @@ export async function POST(request: NextRequest) {
                 .from('users')
                 .insert([{
                     id: to,
-                    name: to,
+                    name: customer_name || to,
                     last_active: new Date().toISOString()
                 }]);
             if (userInsertError) {

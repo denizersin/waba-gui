@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
-        const serviceRoleClient = await createServiceRoleClient();  
+        const serviceRoleClient = await createServiceRoleClient();
 
         // Get user's WhatsApp API credentials
         const { data: settings, error: settingsError } = await serviceRoleClient
@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
                 .from('users')
                 .insert([{
                     id: to,
-                    name: to,
+                    name: customer_name || to,
                     last_active: new Date().toISOString()
                 }]);
             if (userInsertError) {
