@@ -9,6 +9,7 @@ import Image from "next/image";
 import { MediaUpload } from "./media-upload";
 import { UserInfoDialog } from "./user-info-dialog";
 import { TemplateSelector } from "./template-selector";
+import { Textarea } from "../ui/textarea";
 
 // Template interfaces
 interface TemplateComponent {
@@ -1205,9 +1206,16 @@ export function ChatWindow({
           >
             <MessageSquare className="h-5 w-5" />
           </Button>
-          <Input
+          <Textarea
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
+            onKeyDown={(e) => {
+              // Allow Shift+Enter for newlines, Enter for submit
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage(e);
+              }
+            }}
             placeholder={
               isLoading || sendingMedia 
                 ? "Sending..." 
@@ -1215,10 +1223,12 @@ export function ChatWindow({
                   ? "Type broadcast message..." 
                   : "Type a message..."
             }
-            className="flex-1 border-border focus:ring-green-500 rounded-full px-4 py-2"
+            className="flex-1 border-border focus:ring-green-500 rounded-sm px-4 py-2"
             maxLength={1000}
             disabled={isLoading || sendingMedia}
             autoFocus
+            rows={2}
+            style={{ resize: "none" }}
           />
           <Button 
             type="submit" 
