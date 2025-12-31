@@ -205,7 +205,7 @@ async function sendTemplateMessagev2(
 export async function POST(request: NextRequest) {
     console.log('send-template API called');
     try {
-        let userId = env.TURK_USER_ID;
+        let userId = env.PUBLIC_USER_ID;
 
         // Parse request body
         const { phone, template, language, customer_name, text, components }: SendTemplateRequest = await request.json();
