@@ -13,13 +13,42 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 
-CREATE SCHEMA IF NOT EXISTS "public";
-
-
-ALTER SCHEMA "public" OWNER TO "pg_database_owner";
-
-
 COMMENT ON SCHEMA "public" IS 'standard public schema';
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
+
+
+
 
 
 
@@ -214,6 +243,81 @@ $$;
 
 
 ALTER FUNCTION "public"."mark_messages_as_read"("current_user_id" "text", "other_user_id" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."search_user_conversations"("p_user_id" "text", "search_term" "text") RETURNS TABLE("id" "text", "display_name" "text", "last_message" "text", "last_message_time" timestamp with time zone, "unread_count" bigint, "match_type" "text")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  RETURN QUERY
+  WITH matched_users AS (
+    -- İsim üzerinden eşleşen kullanıcıları bul
+    SELECT 
+      u.id AS contact_id
+    FROM public.users u
+    WHERE 
+      u.custom_name ILIKE '%' || search_term || '%' OR 
+      u.whatsapp_name ILIKE '%' || search_term || '%' OR 
+      u.name ILIKE '%' || search_term || '%'
+  ),
+  matched_messages AS (
+    -- Mesaj içeriği üzerinden eşleşenleri bul
+    SELECT 
+      CASE 
+        WHEN m.sender_id = p_user_id THEN m.receiver_id 
+        ELSE m.sender_id 
+      END AS contact_id
+    FROM public.messages m
+    WHERE 
+      (m.sender_id = p_user_id OR m.receiver_id = p_user_id) AND
+      m.content ILIKE '%' || search_term || '%'
+  ),
+  combined_ids AS (
+    -- Benzersiz ID listesi oluştur
+    SELECT contact_id FROM matched_users
+    UNION
+    SELECT contact_id FROM matched_messages
+  )
+  SELECT 
+    u.id, -- Artık belirsiz değil, tablo alias'ı (u) var
+    COALESCE(u.custom_name, u.whatsapp_name, u.name, u.id) AS display_name,
+    lm.content AS last_message,
+    lm.timestamp AS last_message_time,
+    (SELECT COUNT(*) FROM public.messages m2 
+     WHERE m2.sender_id = u.id 
+     AND m2.receiver_id = p_user_id 
+     AND m2.is_read = false) AS unread_count,
+    CASE 
+      WHEN EXISTS (
+        SELECT 1 FROM public.messages m3 
+        WHERE (m3.sender_id = u.id OR m3.receiver_id = u.id) 
+        AND m3.content ILIKE '%' || search_term || '%'
+      ) THEN 'content'
+      ELSE 'user'
+    END AS match_type
+  FROM combined_ids ci
+  JOIN public.users u ON u.id = ci.contact_id
+  LEFT JOIN LATERAL (
+    SELECT m.content, m.timestamp
+    FROM public.messages m
+    WHERE (m.sender_id = p_user_id AND m.receiver_id = u.id) 
+       OR (m.sender_id = u.id AND m.receiver_id = p_user_id)
+    ORDER BY m.timestamp DESC
+    LIMIT 1
+  ) lm ON TRUE
+  ORDER BY 
+    -- İçerik eşleşmesi olanlara öncelik ver (match_type = 'content')
+    (CASE WHEN EXISTS (
+        SELECT 1 FROM public.messages m4 
+        WHERE (m4.sender_id = u.id OR m4.receiver_id = u.id) 
+        AND m4.content ILIKE '%' || search_term || '%'
+      ) THEN 1 ELSE 2 END) ASC,
+    lm.timestamp DESC NULLS LAST;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."search_user_conversations"("p_user_id" "text", "search_term" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
@@ -586,10 +690,185 @@ ALTER TABLE "public"."user_settings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
 
 
+
+
+ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."chat_groups";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."group_members";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."messages";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."users";
+
+
+
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -635,6 +914,12 @@ GRANT ALL ON FUNCTION "public"."mark_messages_as_read"("current_user_id" "text",
 
 
 
+GRANT ALL ON FUNCTION "public"."search_user_conversations"("p_user_id" "text", "search_term" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."search_user_conversations"("p_user_id" "text", "search_term" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."search_user_conversations"("p_user_id" "text", "search_term" "text") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
@@ -644,6 +929,21 @@ GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."update_user_custom_name"("user_id" "text", "new_custom_name" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."update_user_custom_name"("user_id" "text", "new_custom_name" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_user_custom_name"("user_id" "text", "new_custom_name" "text") TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -683,6 +983,12 @@ GRANT ALL ON TABLE "public"."user_settings" TO "service_role";
 
 
 
+
+
+
+
+
+
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
@@ -707,6 +1013,30 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

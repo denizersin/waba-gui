@@ -510,6 +510,8 @@ export function ChatWindow({
     const messageType = message.message_type || 'text';
     let mediaData: MediaData | null = null;
 
+
+
     if (message.media_data) {
       try {
         // Check if media_data is already an object or a string
@@ -559,8 +561,8 @@ export function ChatWindow({
                   onLoadStart={() => handleMediaLoadStart(message.id)}
                   onError={() => {
                     console.log('Next.js Image failed to load, attempting to refresh URL');
-                    handleMediaLoad(message.id);
-                    refreshMediaUrl(message.id);
+                    // handleMediaLoad(message.id);
+                    // refreshMediaUrl(message.id);
                   }}
                   priority={false}
                   placeholder="blur"

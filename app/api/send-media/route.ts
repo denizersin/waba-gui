@@ -190,6 +190,12 @@ export async function POST(request: NextRequest) {
     const files = formData.getAll('files') as File[];
     const captions = formData.getAll('captions') as string[];
 
+
+    console.log(to,'to')
+    console.log(user,'user')
+
+
+
     // Validate required parameters
     if (!to || files.length === 0) {
       console.error('Missing required parameters:', { to: !!to, filesCount: files.length });
@@ -281,8 +287,8 @@ export async function POST(request: NextRequest) {
         // Store in database
         const messageObject = {
           id: messageId || `outgoing_media_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          sender_id: to, // Recipient phone number (sender in DB)
-          receiver_id: user.id, // Current authenticated user (receiver in DB)
+          sender_id: user.id, // Recipient phone number (sender in DB)
+          receiver_id: to, // Current authenticated user (receiver in DB)
           content: caption || `[${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}]`,
           timestamp: timestamp,
           is_sent_by_me: true,
