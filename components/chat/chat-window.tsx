@@ -529,8 +529,8 @@ export function ChatWindow({
     }
 
     const baseClasses = `max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${isOwn
-        ? 'bg-green-500 text-white ml-4'
-        : 'bg-white dark:bg-muted border border-border mr-4'
+      ? 'bg-green-500 text-white ml-4'
+      : 'bg-white dark:bg-muted border border-border mr-4'
       }`;
 
     const isRefreshing = refreshingUrls.has(message.id);
@@ -1107,7 +1107,6 @@ export function ChatWindow({
               </>
             ) : (
               <>
-                <MessageCircle className="h-16 w-16 mb-4 opacity-50" />
                 <MessageCircle className="h-16 w-16 mb-4 opacity-50" />
                 <p className="text-lg font-medium mb-2">{t('no_messages_yet')}</p>
                 <p className="text-sm text-center">

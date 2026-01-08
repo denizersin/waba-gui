@@ -123,7 +123,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
 
   const getMessagePreview = (user: ChatUser) => {
     if (!user.last_message && !user.last_message_type) {
-      return "No messages yet";
+      return t('no_messages_yet');
     }
 
     // Handle media messages

@@ -214,7 +214,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
       onClose();
     } catch (error) {
       console.error('Error sending media:', error);
-      alert('Failed to send media. Please try again.');
+      alert(t('failed_to_send_media_error'));
     } finally {
       setIsUploading(false);
     }
@@ -377,7 +377,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
                       {/* Caption Input */}
                       {(mediaFile.type === 'image' || mediaFile.type === 'video') && (
                         <Input
-                          placeholder="Add a caption..."
+                          placeholder={t('add_caption_placeholder')}
                           value={mediaFile.caption}
                           onChange={(e) => updateCaption(mediaFile.id, e.target.value)}
                           className="text-sm"
