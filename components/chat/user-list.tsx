@@ -474,7 +474,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
             >
               <Users className="h-5 w-5" />
             </Button>
-            <Link href="/protected/templates">
+            {/* <Link href="/protected/templates">
               <Button
                 variant="ghost"
                 size="sm"
@@ -483,7 +483,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
               >
                 <FileText className="h-5 w-5" />
               </Button>
-            </Link>
+            </Link> */}
             <Link href="/protected/setup">
               <Button
                 variant="ghost"

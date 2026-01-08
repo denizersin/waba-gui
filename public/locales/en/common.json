@@ -85,5 +85,19 @@
     "files_ready": "{{count}} files ready to send",
     "send_files": "Send {{count}} Files",
     "add_caption_placeholder": "Add a caption...",
-    "failed_to_send_media_error": "Failed to send media. Please try again."
+    "failed_to_send_media_error": "Failed to send media. Please try again.",
+    "just_now": "Just now",
+    "minutes_ago": "{{count}} minutes ago",
+    "hours_ago": "{{count}} hours ago",
+    "days_ago": "{{count}} days ago",
+    "contact_info_title": "Contact Info",
+    "enter_custom_name": "Enter custom name",
+    "edit_name": "Edit name",
+    "phone_number": "Phone Number",
+    "whatsapp_name": "WhatsApp Name",
+    "whatsapp_name_info": "This is the name set by the user on WhatsApp",
+    "custom_name": "Custom Name",
+    "custom_name_info": "This name is only visible to you",
+    "last_active_label": "Last Active",
+    "done": "Done"
 }

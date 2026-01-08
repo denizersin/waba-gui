@@ -85,5 +85,19 @@
     "files_ready": "{{count}} dosya gönderilmeye hazır",
     "send_files": "{{count}} Dosyayı Gönder",
     "add_caption_placeholder": "Bir açıklama ekleyin...",
-    "failed_to_send_media_error": "Medya gönderilemedi. Lütfen tekrar deneyin."
+    "failed_to_send_media_error": "Medya gönderilemedi. Lütfen tekrar deneyin.",
+    "just_now": "Az önce",
+    "minutes_ago": "{{count}} dakika önce",
+    "hours_ago": "{{count}} saat önce",
+    "days_ago": "{{count}} gün önce",
+    "contact_info_title": "Kişi Bilgisi",
+    "enter_custom_name": "Özel isim girin",
+    "edit_name": "İsmi düzenle",
+    "phone_number": "Telefon Numarası",
+    "whatsapp_name": "WhatsApp İsmi",
+    "whatsapp_name_info": "Bu isim kullanıcı tarafından WhatsApp'ta ayarlanmıştır",
+    "custom_name": "Özel İsim",
+    "custom_name_info": "Bu isim sadece sizin tarafınızdan görülebilir",
+    "last_active_label": "Son Görülme",
+    "done": "Tamam"
 }

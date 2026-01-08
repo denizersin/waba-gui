@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Verify user authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -31,10 +31,10 @@ export async function POST(request: NextRequest) {
     // Validate custom name length
     if (customName && customName.length > 100) {
       return NextResponse.json(
-        { 
-          error: 'Custom name too long', 
-          message: 'Custom name must be 100 characters or less' 
-        }, 
+        {
+          error: 'Custom name too long',
+          message: 'Custom name must be 100 characters or less'
+        },
         { status: 400 }
       );
     }
@@ -44,9 +44,8 @@ export async function POST(request: NextRequest) {
     // Update the user's custom name
     const { data: updatedUser, error: updateError } = await supabase
       .from('users')
-      .update({ 
-        custom_name: customName,
-        updated_at: new Date().toISOString()
+      .update({
+        custom_name: customName
       })
       .eq('id', userId)
       .select()
@@ -84,10 +83,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error in update-name API:', error);
     return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
-      }, 
+      {
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

@@ -676,6 +676,17 @@ export default function ChatPage() {
       // Refresh users list to show updated name
       await refreshUsers();
 
+      // Update selectedUser if it matches the updated user
+      setSelectedUser((prev) => {
+        if (prev && prev.id === userId) {
+          return {
+            ...prev,
+            custom_name: customName.trim() || undefined
+          };
+        }
+        return prev;
+      });
+
     } catch (error) {
       console.error('Error updating name:', error);
       throw error; // Re-throw to let the dialog handle the error
