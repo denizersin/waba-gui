@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { X, Search, Send, Loader2, AlertCircle, FileText, Eye } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // Template types
 interface TemplateComponent {
@@ -66,6 +67,7 @@ interface TemplateSelectorProps {
 }
 
 export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser }: TemplateSelectorProps) {
+  const { t } = useTranslation();
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<WhatsAppTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
@@ -113,13 +115,13 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to fetch templates');
+        throw new Error(result.message || t('failed_load_templates'));
       }
 
       setTemplates(result.data || []);
     } catch (error) {
       console.error('Error fetching templates:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch templates');
+      setError(error instanceof Error ? error.message : t('failed_load_templates'));
     } finally {
       setIsLoading(false);
     }
@@ -134,14 +136,14 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     const headerVariables: string[] = [];
     const bodyVariables: string[] = [];
     const footerVariables: string[] = [];
-    
+
     template.components.forEach(component => {
       if (component.text) {
         // Extract variables like {{1}}, {{2}}, etc.
         const matches = component.text.match(/\{\{(\d+)\}\}/g);
         if (matches) {
           const componentVariables = matches.map(match => match.replace(/[{}]/g, ''));
-          
+
           switch (component.type) {
             case 'HEADER':
               componentVariables.forEach(variable => {
@@ -173,7 +175,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     headerVariables.sort((a, b) => parseInt(a) - parseInt(b));
     bodyVariables.sort((a, b) => parseInt(a) - parseInt(b));
     footerVariables.sort((a, b) => parseInt(a) - parseInt(b));
-    
+
     // Get all unique variables
     const allVariables = [...new Set([...headerVariables, ...bodyVariables, ...footerVariables])]
       .sort((a, b) => parseInt(a) - parseInt(b));
@@ -307,7 +309,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
   const handleTemplateSelect = (template: WhatsAppTemplate) => {
     setSelectedTemplate(template);
     setShowPreview(false);
-    
+
     // Initialize variables
     const templateVars = extractVariables(template);
     const initialVars: Record<string, string> = {};
@@ -327,30 +329,30 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     // Validate required variables per component
     const templateVars = extractVariables(selectedTemplate);
     const missingVars: string[] = [];
-    
+
     // Check header variables
     templateVars.header.forEach(variable => {
       if (!variables.header[variable]?.trim()) {
         missingVars.push(`Header {{${variable}}}`);
       }
     });
-    
+
     // Check body variables
     templateVars.body.forEach(variable => {
       if (!variables.body[variable]?.trim()) {
         missingVars.push(`Body {{${variable}}}`);
       }
     });
-    
+
     // Check footer variables
     templateVars.footer.forEach(variable => {
       if (!variables.footer[variable]?.trim()) {
         missingVars.push(`Footer {{${variable}}}`);
       }
     });
-    
+
     if (missingVars.length > 0) {
-      setError(`Please fill in all variables: ${missingVars.join(', ')}`);
+      setError(t('fill_all_variables', { vars: missingVars.join(', ') }));
       return;
     }
 
@@ -359,7 +361,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
 
     try {
       await onSendTemplate(selectedTemplate.name, selectedTemplate, variables);
-      
+
       // Reset state and close
       setSelectedTemplate(null);
       setVariables({
@@ -371,7 +373,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
       onClose();
     } catch (error) {
       console.error('Error sending template:', error);
-      setError(error instanceof Error ? error.message : 'Failed to send template');
+      setError(error instanceof Error ? error.message : t('failed_send_media'));
     } finally {
       setIsSending(false);
     }
@@ -400,9 +402,9 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
           <div className="flex items-center gap-3">
             <FileText className="h-6 w-6 text-green-600" />
             <div>
-              <h2 className="text-xl font-semibold">Send Template Message</h2>
+              <h2 className="text-xl font-semibold">{t('send_template_title')}</h2>
               <p className="text-sm text-muted-foreground">
-                To: {selectedUser.custom_name || selectedUser.whatsapp_name || selectedUser.name}
+                {t('to_user', { name: selectedUser.custom_name || selectedUser.whatsapp_name || selectedUser.name })}
               </p>
             </div>
           </div>
@@ -426,7 +428,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                   <Input
-                    placeholder="Search templates by name or category..."
+                    placeholder={t('search_templates')}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -439,16 +441,16 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                 {isLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-green-600" />
-                    <span className="ml-3 text-muted-foreground">Loading templates...</span>
+                    <span className="ml-3 text-muted-foreground">{t('loading_templates')}</span>
                   </div>
                 ) : error ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="text-center">
                       <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                      <p className="text-red-600 font-medium mb-2">Failed to load templates</p>
+                      <p className="text-red-600 font-medium mb-2">{t('failed_load_templates')}</p>
                       <p className="text-sm text-muted-foreground mb-4">{error}</p>
                       <Button onClick={fetchTemplates} variant="outline" size="sm">
-                        Try Again
+                        {t('try_again')}
                       </Button>
                     </div>
                   </div>
@@ -456,7 +458,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                   <div className="text-center py-12">
                     <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground">
-                      {searchTerm ? 'No templates found matching your search' : 'No approved templates available'}
+                      {searchTerm ? t('no_templates_found') : t('no_approved_templates')}
                     </p>
                   </div>
                 ) : (
@@ -474,7 +476,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                           </div>
                           <span className="text-lg">{template.category_icon}</span>
                         </div>
-                        
+
                         <div className="text-xs text-muted-foreground mb-2">
                           {template.formatted_components.body?.text?.substring(0, 100)}
                           {template.formatted_components.body?.text && template.formatted_components.body.text.length > 100 ? '...' : ''}
@@ -510,26 +512,26 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                       size="sm"
                       onClick={() => setSelectedTemplate(null)}
                     >
-                      Back to Templates
+                      {t('back_to_templates')}
                     </Button>
                   </div>
 
                   {/* Variables */}
                   {extractVariables(selectedTemplate).all.length > 0 && (
                     <div className="space-y-6">
-                      <h4 className="font-medium">Template Variables</h4>
-                      
+                      <h4 className="font-medium">{t('template_variables')}</h4>
+
                       {/* Header Variables */}
                       {extractVariables(selectedTemplate).header.length > 0 && (
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                            <h5 className="text-sm font-medium text-blue-700 dark:text-blue-300">Header Variables</h5>
+                            <h5 className="text-sm font-medium text-blue-700 dark:text-blue-300">{t('header_variables')}</h5>
                           </div>
                           {extractVariables(selectedTemplate).header.map((variable) => (
                             <div key={`header-${variable}`}>
                               <Label htmlFor={`header-var-${variable}`}>
-                                Header Variable {`{{${variable}}}`} *
+                                {t('header_variable_label', { var: variable })}
                               </Label>
                               <Input
                                 id={`header-var-${variable}`}
@@ -538,7 +540,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                                   ...prev,
                                   header: { ...prev.header, [variable]: e.target.value }
                                 }))}
-                                placeholder={`Enter value for header {{${variable}}}`}
+                                placeholder={t('enter_header_value', { var: variable })}
                                 className="mt-1"
                               />
                             </div>
@@ -551,12 +553,12 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                            <h5 className="text-sm font-medium text-green-700 dark:text-green-300">Body Variables</h5>
+                            <h5 className="text-sm font-medium text-green-700 dark:text-green-300">{t('body_variables')}</h5>
                           </div>
                           {extractVariables(selectedTemplate).body.map((variable) => (
                             <div key={`body-${variable}`}>
                               <Label htmlFor={`body-var-${variable}`}>
-                                Body Variable {`{{${variable}}}`} *
+                                {t('body_variable_label', { var: variable })}
                               </Label>
                               <Input
                                 id={`body-var-${variable}`}
@@ -565,7 +567,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                                   ...prev,
                                   body: { ...prev.body, [variable]: e.target.value }
                                 }))}
-                                placeholder={`Enter value for body {{${variable}}}`}
+                                placeholder={t('enter_body_value', { var: variable })}
                                 className="mt-1"
                               />
                             </div>
@@ -578,12 +580,12 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                            <h5 className="text-sm font-medium text-purple-700 dark:text-purple-300">Footer Variables</h5>
+                            <h5 className="text-sm font-medium text-purple-700 dark:text-purple-300">{t('footer_variables')}</h5>
                           </div>
                           {extractVariables(selectedTemplate).footer.map((variable) => (
                             <div key={`footer-${variable}`}>
                               <Label htmlFor={`footer-var-${variable}`}>
-                                Footer Variable {`{{${variable}}}`} *
+                                {t('footer_variable_label', { var: variable })}
                               </Label>
                               <Input
                                 id={`footer-var-${variable}`}
@@ -592,7 +594,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                                   ...prev,
                                   footer: { ...prev.footer, [variable]: e.target.value }
                                 }))}
-                                placeholder={`Enter value for footer {{${variable}}}`}
+                                placeholder={t('enter_footer_value', { var: variable })}
                                 className="mt-1"
                               />
                             </div>
@@ -607,7 +609,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                     <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                       <div className="flex items-center gap-2">
                         <AlertCircle className="h-4 w-4 text-red-600" />
-                        <span className="text-sm font-medium text-red-800">Error</span>
+                        <span className="text-sm font-medium text-red-800">{t('error_title')}</span>
                       </div>
                       <p className="text-sm text-red-700 mt-1">{error}</p>
                     </div>
@@ -618,7 +620,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
               {/* Preview Panel */}
               {showPreview && (
                 <div className="w-1/2 overflow-y-auto p-6">
-                  <h4 className="font-medium mb-4">Preview</h4>
+                  <h4 className="font-medium mb-4">{t('preview_title')}</h4>
                   {renderTemplatePreview(selectedTemplate, variables)}
                 </div>
               )}
@@ -639,7 +641,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                 className="gap-2"
               >
                 <Eye className="h-4 w-4" />
-                {showPreview ? 'Hide Preview' : 'Show Preview'}
+                {showPreview ? t('hide_preview') : t('show_preview')}
               </Button>
               <Button
                 onClick={handleSendTemplate}
@@ -649,12 +651,12 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                 {isSending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending...
+                    {t('sending_message')}
                   </>
                 ) : (
                   <>
                     <Send className="h-4 w-4" />
-                    Send Template
+                    {t('send_template_btn')}
                   </>
                 )}
               </Button>

@@ -10,6 +10,7 @@ import { MediaUpload } from "./media-upload";
 import { UserInfoDialog } from "./user-info-dialog";
 import { TemplateSelector } from "./template-selector";
 import { Textarea } from "../ui/textarea";
+import { useTranslation } from "react-i18next";
 
 // Template interfaces
 interface TemplateComponent {
@@ -107,17 +108,18 @@ interface ChatWindowProps {
   broadcastGroupName?: string | null;
 }
 
-export function ChatWindow({ 
-  selectedUser, 
-  messages, 
-  onSendMessage, 
-  onBack, 
+export function ChatWindow({
+  selectedUser,
+  messages,
+  onSendMessage,
+  onBack,
   onClose,
   isMobile = false,
   isLoading = false,
   onUpdateName,
   broadcastGroupName
 }: ChatWindowProps) {
+  const { t } = useTranslation();
   const [messageInput, setMessageInput] = useState("");
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [refreshingUrls, setRefreshingUrls] = useState<Set<string>>(new Set());
@@ -154,7 +156,7 @@ export function ChatWindow({
       }));
       return;
     }
-    
+
     if (!selectedUser) return;
 
     try {
@@ -185,10 +187,10 @@ export function ChatWindow({
   };
 
   // Calculate unread messages
-  const unreadMessages = messages.filter(msg => 
+  const unreadMessages = messages.filter(msg =>
     !msg.is_sent_by_me && !msg.is_read
   );
-  const firstUnreadIndex = messages.findIndex(msg => 
+  const firstUnreadIndex = messages.findIndex(msg =>
     !msg.is_sent_by_me && !msg.is_read
   );
   const hasUnreadMessages = unreadMessages.length > 0;
@@ -197,7 +199,7 @@ export function ChatWindow({
   useEffect(() => {
     // Only scroll if we have messages
     if (messages.length === 0) return;
-    
+
     // Small delay to ensure DOM is updated
     const scrollTimer = setTimeout(() => {
       if (hasUnreadMessages && firstUnreadIndex !== -1) {
@@ -253,7 +255,7 @@ export function ChatWindow({
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = e.dataTransfer.files;
     if (files.length > 0 && selectedUser) {
       setShowMediaUpload(true);
@@ -273,21 +275,21 @@ export function ChatWindow({
   const handleSendMedia = async (mediaFiles: MediaFile[]) => {
     // Don't allow media upload in broadcast mode for now
     if ((!selectedUser && !broadcastGroupName) || sendingMedia) return;
-    
+
     if (broadcastGroupName) {
-      alert('Media upload to broadcast groups is not yet supported. Please send text messages only.');
+      alert(t('broadcast_media_not_supported'));
       return;
     }
 
     // TypeScript safety check
     if (!selectedUser) return;
-    
+
     setSendingMedia(true);
-    
+
     try {
       const formData = new FormData();
       formData.append('to', selectedUser.id);
-      
+
       mediaFiles.forEach((mediaFile) => {
         formData.append('files', mediaFile.file);
         formData.append('captions', mediaFile.caption || '');
@@ -301,17 +303,17 @@ export function ChatWindow({
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to send media');
+        throw new Error(result.error || t('failed_to_send_media'));
       }
 
       console.log('Media sent successfully:', result);
-      
+
       // Show success message
       if (result.successCount > 0) {
         // You might want to show a toast notification here
         console.log(`Successfully sent ${result.successCount} of ${result.totalFiles} files`);
       }
-      
+
       if (result.failureCount > 0) {
         alert(`Failed to send ${result.failureCount} files. Please try again.`);
       }
@@ -335,9 +337,9 @@ export function ChatWindow({
   };
 
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -348,15 +350,15 @@ export function ChatWindow({
     yesterday.setDate(yesterday.getDate() - 1);
 
     if (date.toDateString() === today.toDateString()) {
-      return "Today";
+      return t('today');
     } else if (date.toDateString() === yesterday.toDateString()) {
-      return "Yesterday";
+      return t('yesterday');
     } else {
-      return date.toLocaleDateString([], { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+      return date.toLocaleDateString([], {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
       });
     }
   };
@@ -390,26 +392,26 @@ export function ChatWindow({
     } else {
       // Create new audio element
       const newAudio = new Audio(audioUrl);
-      
+
       // Set up audio event listeners
       newAudio.onloadedmetadata = () => {
         setAudioDurations(prev => ({ ...prev, [messageId]: newAudio.duration }));
       };
-      
+
       newAudio.ontimeupdate = () => {
         setAudioCurrentTime(prev => ({ ...prev, [messageId]: newAudio.currentTime }));
       };
-      
+
       newAudio.onended = () => {
         setPlayingAudio(null);
         setAudioCurrentTime(prev => ({ ...prev, [messageId]: 0 }));
       };
-      
+
       newAudio.onerror = () => {
         console.error('Error playing audio');
         setPlayingAudio(null);
       };
-      
+
       audioRefs.current[messageId] = newAudio;
       newAudio.play();
       setPlayingAudio(messageId);
@@ -430,26 +432,26 @@ export function ChatWindow({
       }
 
       const blob = await response.blob();
-      
+
       // Create download link
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = filename || 'download';
       link.style.display = 'none';
-      
+
       // Trigger download
       document.body.appendChild(link);
       link.click();
-      
+
       // Cleanup
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
-      
+
       console.log('File downloaded successfully:', filename);
     } catch (error) {
       console.error('Error downloading media:', error);
-      
+
       // Fallback: Open in new tab if direct download fails
       try {
         const newWindow = window.open(url, '_blank');
@@ -526,11 +528,10 @@ export function ChatWindow({
       }
     }
 
-    const baseClasses = `max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${
-      isOwn
+    const baseClasses = `max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${isOwn
         ? 'bg-green-500 text-white ml-4'
         : 'bg-white dark:bg-muted border border-border mr-4'
-    }`;
+      }`;
 
     const isRefreshing = refreshingUrls.has(message.id);
     const isMediaLoading = loadingMedia.has(message.id);
@@ -545,13 +546,13 @@ export function ChatWindow({
                   <div className="absolute inset-0 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-xl">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-                      <span className="text-xs text-gray-500">Loading image...</span>
+                      <span className="text-xs text-gray-500">{t('loading_image')}</span>
                     </div>
                   </div>
                 )}
                 <Image
                   src={mediaData.media_url}
-                  alt={mediaData.caption || "Shared image"}
+                  alt={mediaData.caption || t('shared_image')}
                   width={300}
                   height={200}
                   className="max-w-[300px] max-h-[400px] w-auto h-auto object-cover cursor-pointer rounded-xl"
@@ -579,8 +580,8 @@ export function ChatWindow({
               <div className="flex items-center gap-3 p-4 bg-gray-100 dark:bg-gray-800 rounded-xl mb-2">
                 <ImageIcon className="h-8 w-8 text-gray-500" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Image</p>
-                  <p className="text-xs text-gray-500">Loading...</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('image')}</p>
+                  <p className="text-xs text-gray-500">{t('loading')}</p>
                 </div>
                 {mediaData?.s3_uploaded === false && (
                   <Button
@@ -625,7 +626,7 @@ export function ChatWindow({
                   {mediaData?.mime_type}
                 </p>
                 {isMediaLoading && (
-                  <p className="text-xs text-blue-500 mt-1">Preparing download...</p>
+                  <p className="text-xs text-blue-500 mt-1">{t('preparing_download')}</p>
                 )}
               </div>
               {mediaData?.media_url && mediaData.s3_uploaded && (
@@ -665,7 +666,7 @@ export function ChatWindow({
         const duration = audioDurations[message.id] || 0;
         const currentTime = audioCurrentTime[message.id] || 0;
         const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-        
+
         return (
           <div className={baseClasses}>
             <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl mb-2 min-w-[300px] max-w-[400px]">
@@ -684,12 +685,12 @@ export function ChatWindow({
                   <Play className="h-5 w-5" />
                 )}
               </Button>
-              
+
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                   <Volume2 className="h-4 w-4 text-gray-600 dark:text-gray-400" />
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {mediaData?.voice ? 'Voice Message' : 'Audio'}
+                    {mediaData?.voice ? t('voice_message') : t('media_audio')}
                   </span>
                   {(!mediaData?.media_url || !mediaData.s3_uploaded) && (
                     <Button
@@ -703,14 +704,13 @@ export function ChatWindow({
                     </Button>
                   )}
                 </div>
-                
+
                 {/* Audio Progress Bar */}
                 <div className="relative">
                   <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-300 ${
-                        isOwn ? 'bg-green-300' : 'bg-blue-400'
-                      }`}
+                    <div
+                      className={`h-full transition-all duration-300 ${isOwn ? 'bg-green-300' : 'bg-blue-400'
+                        }`}
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -723,9 +723,9 @@ export function ChatWindow({
                     </span>
                   </div>
                 </div>
-                
+
                 {isMediaLoading && (
-                  <p className="text-xs text-blue-500 mt-1">Loading audio...</p>
+                  <p className="text-xs text-blue-500 mt-1">{t('loading_audio')}</p>
                 )}
               </div>
             </div>
@@ -744,11 +744,11 @@ export function ChatWindow({
                   <div className="absolute inset-0 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-xl z-10">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-                      <span className="text-xs text-gray-500">Loading video...</span>
+                      <span className="text-xs text-gray-500">{t('loading_video')}</span>
                     </div>
                   </div>
                 )}
-                <video 
+                <video
                   controls
                   className="max-w-[400px] max-h-[300px] w-auto h-auto rounded-xl"
                   preload="metadata"
@@ -761,7 +761,7 @@ export function ChatWindow({
                   }}
                 >
                   <source src={mediaData.media_url} type={mediaData.mime_type} />
-                  Your browser does not support the video tag.
+                  {t('video_not_supported')}
                 </video>
                 {isRefreshing && (
                   <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-xl z-20">
@@ -773,8 +773,8 @@ export function ChatWindow({
               <div className="flex items-center gap-3 p-4 bg-gray-100 dark:bg-gray-800 rounded-xl mb-2">
                 <Play className="h-8 w-8 text-gray-500" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Video</p>
-                  <p className="text-xs text-gray-500">Loading...</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('media_video')}</p>
+                  <p className="text-xs text-gray-500">{t('loading')}</p>
                 </div>
                 {(!mediaData?.media_url || !mediaData.s3_uploaded) && (
                   <Button
@@ -826,19 +826,19 @@ export function ChatWindow({
                     </div>
                   ) : mediaData.header.format === 'VIDEO' && mediaData.header.media_url ? (
                     <div className="mb-3 rounded-lg overflow-hidden">
-                      <video 
+                      <video
                         controls
                         className="max-w-full h-auto rounded-lg"
                         preload="metadata"
                       >
                         <source src={mediaData.header.media_url} type="video/mp4" />
-                        Your browser does not support the video tag.
+                        {t('video_not_supported')}
                       </video>
                     </div>
                   ) : mediaData.header.format === 'DOCUMENT' && mediaData.header.media_url ? (
                     <div className="flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3">
                       <FileText className="h-5 w-5 text-gray-600" />
-                      <span className="text-sm font-medium">{mediaData.header.filename || 'Document'}</span>
+                      <span className="text-sm font-medium">{mediaData.header.filename || t('media_document')}</span>
                     </div>
                   ) : mediaData.header.text ? (
                     <div className="mb-3">
@@ -889,8 +889,8 @@ export function ChatWindow({
                         key={index}
                         className={`
                           px-4 py-3 rounded-lg border border-opacity-30 border-current text-center font-medium
-                          ${isOwn 
-                            ? 'bg-white bg-opacity-20 hover:bg-opacity-30' 
+                          ${isOwn
+                            ? 'bg-white bg-opacity-20 hover:bg-opacity-30'
                             : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
                           }
                           cursor-pointer transition-colors
@@ -953,7 +953,7 @@ export function ChatWindow({
       default:
         // Text message or fallback
         const isOptimistic = message.id.startsWith('optimistic_');
-        
+
         return (
           <div className={`${baseClasses} ${isOptimistic ? 'opacity-70' : ''} transition-opacity duration-300`}>
             <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
@@ -966,7 +966,7 @@ export function ChatWindow({
               {isOptimistic && isOwn && (
                 <span className="text-xs text-green-200 flex items-center gap-1">
                   <span className="inline-block w-1 h-1 bg-green-200 rounded-full animate-pulse"></span>
-                  Sending...
+                  {t('sending_message')}
                 </span>
               )}
             </div>
@@ -994,20 +994,20 @@ export function ChatWindow({
       <div className="h-full flex flex-col items-center justify-center bg-muted/20">
         <MessageCircle className="h-24 w-24 text-muted-foreground/50 mb-6" />
         <h2 className="text-2xl font-semibold text-muted-foreground mb-2">
-          Welcome to WhatsApp Web
+          {t('welcome_title')}
         </h2>
         <p className="text-muted-foreground text-center max-w-md">
-          Select a conversation from the sidebar to start messaging, or create a new chat.
+          {t('welcome_description')}
         </p>
         <p className="text-sm text-muted-foreground mt-4 opacity-75">
-          Press <kbd className="px-2 py-1 bg-muted rounded text-xs">ESC</kbd> to close chat window
+          {t('press')} <kbd className="px-2 py-1 bg-muted rounded text-xs">ESC</kbd> {t('to_close')}
         </p>
       </div>
     );
   }
 
   return (
-    <div 
+    <div
       className="h-full flex flex-col bg-background relative"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -1016,10 +1016,10 @@ export function ChatWindow({
       {/* Chat Header */}
       <div className="p-4 border-b border-border bg-muted/50 flex items-center gap-3">
         {isMobile && onBack && (
-          <button 
+          <button
             onClick={onBack}
             className="p-2 hover:bg-muted rounded-full transition-colors"
-            title="Back to contacts"
+            title={t('back_to_contacts')}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -1036,17 +1036,17 @@ export function ChatWindow({
               <h2 className="font-semibold text-foreground flex items-center gap-2">
                 {broadcastGroupName}
                 <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
-                  Broadcast
+                  {t('broadcast')}
                 </span>
               </h2>
               <p className="text-sm text-muted-foreground">
                 {isLoading ? (
                   <span className="flex items-center gap-1">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    Sending broadcast...
+                    {t('sending_broadcast')}
                   </span>
                 ) : (
-                  'Send message to all group members'
+                  t('send_message_to_group')
                 )}
               </p>
             </div>
@@ -1059,30 +1059,30 @@ export function ChatWindow({
                 {selectedUser.name.substring(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <div 
+            <div
               className="flex-1 cursor-pointer hover:bg-muted/50 rounded-lg p-2 -m-2 transition-colors"
               onClick={() => setShowUserInfo(true)}
-              title="View contact info"
+              title={t('view_contact_info')}
             >
               <h2 className="font-semibold text-foreground">{getDisplayName(selectedUser)}</h2>
               <p className="text-sm text-muted-foreground">
                 {isLoading || sendingMedia ? (
                   <span className="flex items-center gap-1">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    {sendingMedia ? 'Sending media...' : 'Sending message...'}
+                    {sendingMedia ? t('sending_media') : t('sending_message')}
                   </span>
                 ) : (
-                  `Last seen ${formatTime(selectedUser.last_active)}`
+                  `${t('last_seen')} ${formatTime(selectedUser.last_active)}`
                 )}
               </p>
             </div>
           </>
         ) : null}
         {!isMobile && onClose && (
-          <button 
+          <button
             onClick={onClose}
             className="p-2 hover:bg-muted rounded-full transition-colors"
-            title="Close chat (ESC)"
+            title={t('close_chat')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -1090,7 +1090,7 @@ export function ChatWindow({
       </div>
 
       {/* Messages Area */}
-      <div 
+      <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-green-50/30 to-blue-50/30 dark:from-green-950/10 dark:to-blue-950/10"
       >
@@ -1100,18 +1100,18 @@ export function ChatWindow({
             {broadcastGroupName ? (
               <>
                 <Users className="h-16 w-16 mb-4 opacity-50" />
-                <p className="text-lg font-medium mb-2">Broadcast to {broadcastGroupName}</p>
+                <p className="text-lg font-medium mb-2">{t('broadcast_to')} {broadcastGroupName}</p>
                 <p className="text-sm text-center max-w-md">
-                  Messages sent here will be delivered to all members in this group individually.
-                  Each member will receive the message as a personal message from you.
+                  {t('broadcast_description')}
                 </p>
               </>
             ) : (
               <>
                 <MessageCircle className="h-16 w-16 mb-4 opacity-50" />
-                <p className="text-lg font-medium mb-2">No messages yet</p>
+                <MessageCircle className="h-16 w-16 mb-4 opacity-50" />
+                <p className="text-lg font-medium mb-2">{t('no_messages_yet')}</p>
                 <p className="text-sm text-center">
-                  Start the conversation by sending a message below
+                  {t('select_chat')}
                 </p>
               </>
             )}
@@ -1132,7 +1132,7 @@ export function ChatWindow({
                   {dayMessages.map((message, index) => {
                     // Use is_sent_by_me field instead of comparing IDs to determine message ownership
                     const isOwn = message.is_sent_by_me;
-                    
+
                     // Debug logging to help identify the issue
                     if (!isOwn && message.content && !message.content.startsWith('[')) {
                       console.log('Message alignment check:', {
@@ -1143,30 +1143,30 @@ export function ChatWindow({
                         content: message.content.substring(0, 30)
                       });
                     }
-                    
+
                     const globalIndex = messages.findIndex(m => m.id === message.id);
                     const isFirstUnread = globalIndex === firstUnreadIndex;
                     const isNewMessage = index === dayMessages.length - 1 && dayMessages.length > 0;
-                    
+
                     return (
-                      <div 
+                      <div
                         key={message.id}
                         className={`${isNewMessage ? 'animate-fade-in-up' : ''}`}
                       >
                         {/* Unread messages indicator */}
                         {isFirstUnread && hasUnreadMessages && (
-                          <div 
+                          <div
                             ref={unreadIndicatorRef}
                             className="flex items-center justify-center my-4 animate-fade-in"
                           >
                             <div className="flex-1 h-px bg-red-500"></div>
                             <div className="px-3 py-1 bg-red-500 text-white text-xs font-medium rounded-full shadow-lg">
-                              {unreadMessages.length} unread message{unreadMessages.length !== 1 ? 's' : ''}
+                              {unreadMessages.length} {t('unread_messages')}
                             </div>
                             <div className="flex-1 h-px bg-red-500"></div>
                           </div>
                         )}
-                        
+
                         <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
                           {renderMessageContent(message, isOwn)}
                         </div>
@@ -1192,7 +1192,7 @@ export function ChatWindow({
               size="sm"
               onClick={() => setShowMediaUpload(true)}
               className="p-2 hover:bg-muted rounded-full transition-colors"
-              title="Attach media"
+              title={t('attach_media')}
             >
               <Paperclip className="h-5 w-5" />
             </Button>
@@ -1204,7 +1204,7 @@ export function ChatWindow({
             size="sm"
             onClick={() => setShowTemplateSelector(true)}
             className="p-2 hover:bg-muted rounded-full transition-colors"
-            title="Send template"
+            title={t('send_template')}
           >
             <MessageSquare className="h-5 w-5" />
           </Button>
@@ -1219,11 +1219,11 @@ export function ChatWindow({
               }
             }}
             placeholder={
-              isLoading || sendingMedia 
-                ? "Sending..." 
-                : broadcastGroupName 
-                  ? "Type broadcast message..." 
-                  : "Type a message..."
+              isLoading || sendingMedia
+                ? t('sending_message')
+                : broadcastGroupName
+                  ? t('type_broadcast_message')
+                  : t('type_message')
             }
             className="flex-1 border-border focus:ring-green-500 rounded-sm px-4 py-2"
             maxLength={1000}
@@ -1232,8 +1232,8 @@ export function ChatWindow({
             rows={2}
             style={{ resize: "none" }}
           />
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={!messageInput.trim() || isLoading || sendingMedia}
             className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
@@ -1252,10 +1252,10 @@ export function ChatWindow({
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-2xl border-2 border-green-500 border-dashed">
             <Paperclip className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <p className="text-2xl font-semibold text-gray-900 dark:text-white text-center mb-2">
-              Drop files to send
+              {t('drop_files')}
             </p>
             <p className="text-gray-500 dark:text-gray-400 text-center">
-              Release to upload and send media
+              {t('release_to_send')}
             </p>
           </div>
         </div>
@@ -1277,8 +1277,8 @@ export function ChatWindow({
           isOpen={showTemplateSelector}
           onClose={() => setShowTemplateSelector(false)}
           onSendTemplate={handleSendTemplate}
-          selectedUser={selectedUser || { 
-            id: 'broadcast', 
+          selectedUser={selectedUser || {
+            id: 'broadcast',
             name: broadcastGroupName || 'Broadcast Group',
             last_active: new Date().toISOString()
           }}

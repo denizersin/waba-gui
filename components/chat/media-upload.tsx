@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTranslation } from "react-i18next";
 import { X, Upload, Image as ImageIcon, FileText, Music, Video, Send, Loader2, Paperclip } from "lucide-react";
 import Image from "next/image";
 
@@ -25,7 +26,7 @@ interface MediaUploadProps {
 const WHATSAPP_SUPPORTED_TYPES = [
   // Audio
   'audio/aac',
-  'audio/mp4', 
+  'audio/mp4',
   'audio/mpeg',
   'audio/amr',
   'audio/ogg',
@@ -53,6 +54,7 @@ function isWhatsAppSupportedFileType(mimeType: string): boolean {
 }
 
 export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUploadProps) {
+  const { t } = useTranslation();
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -62,7 +64,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
     if (file.type.startsWith('image/')) return 'image';
     if (file.type.startsWith('audio/')) return 'audio';
     if (file.type.startsWith('video/')) return 'video';
-    
+
     // Enhanced document type detection
     const documentTypes = [
       'application/pdf',
@@ -84,11 +86,11 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
       'text/javascript',
       'application/javascript'
     ];
-    
+
     if (documentTypes.includes(file.type) || file.type.startsWith('text/')) {
       return 'document';
     }
-    
+
     // Default to document for unknown types
     return 'document';
   };
@@ -113,13 +115,19 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
     for (const file of filesArray) {
       // Check file size (25MB limit)
       if (file.size > 25 * 1024 * 1024) {
-        errors.push(`${file.name}: File size exceeds 25MB limit`);
+        if (file.size > 25 * 1024 * 1024) {
+          errors.push(`${file.name}: ${t('file_size_error')}`);
+          continue;
+        }
         continue;
       }
 
       // Check if file type is supported by WhatsApp
       if (!isWhatsAppSupportedFileType(file.type)) {
-        errors.push(`${file.name}: File type '${file.type}' is not supported by WhatsApp. Supported types include: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, JPG, PNG, WEBP, MP4, 3GP, AAC, MP3, MPEG, AMR, OGG, OPUS`);
+        if (!isWhatsAppSupportedFileType(file.type)) {
+          errors.push(`${file.name}: ${t('file_type_error', { type: file.type })}`);
+          continue;
+        }
         continue;
       }
 
@@ -134,7 +142,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
       // Create preview for images
       if (mediaFile.type === 'image') {
         const preview = await createFilePreview(file);
-        setMediaFiles(prev => 
+        setMediaFiles(prev =>
           prev.map(f => f.id === mediaFile.id ? { ...f, preview } : f)
         );
       }
@@ -143,7 +151,9 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
     }
 
     if (errors.length > 0) {
-      alert('Some files could not be added:\n\n' + errors.join('\n\n'));
+      if (errors.length > 0) {
+        alert(t('files_error_title') + '\n\n' + errors.join('\n\n'));
+      }
     }
 
     if (validFiles.length > 0) {
@@ -164,7 +174,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       processFiles(files);
@@ -187,8 +197,8 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
   };
 
   const updateCaption = (id: string, caption: string) => {
-    setMediaFiles(prev => 
-      prev.map(file => 
+    setMediaFiles(prev =>
+      prev.map(file =>
         file.id === id ? { ...file, caption } : file
       )
     );
@@ -270,11 +280,11 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Send Media
+              {t('send_media_title')}
             </h2>
             {selectedUser && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                To: {selectedUser.name}
+                {t('to_user', { name: selectedUser.name })}
               </p>
             )}
           </div>
@@ -293,28 +303,27 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
           {/* Drag and Drop Area */}
           {mediaFiles.length === 0 && (
             <div
-              className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
-                isDragging
-                  ? 'border-green-500 bg-green-50 dark:bg-green-950/20'
-                  : 'border-gray-300 dark:border-gray-600 hover:border-green-400'
-              }`}
+              className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${isDragging
+                ? 'border-green-500 bg-green-50 dark:bg-green-950/20'
+                : 'border-gray-300 dark:border-gray-600 hover:border-green-400'
+                }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
               <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Drop files here or click to upload
+                {t('drop_files_here')}
               </h3>
               <p className="text-gray-500 dark:text-gray-400 mb-6">
-                Support for images, videos, audio, and documents (max 25MB each)
+                {t('media_support_info')}
               </p>
               <Button
                 onClick={() => fileInputRef.current?.click()}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <Paperclip className="h-4 w-4 mr-2" />
-                Choose Files
+                {t('choose_files')}
               </Button>
             </div>
           )}
@@ -324,7 +333,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                  Selected Files ({mediaFiles.length})
+                  {t('selected_files')} ({mediaFiles.length})
                 </h3>
                 <Button
                   variant="outline"
@@ -332,7 +341,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Paperclip className="h-4 w-4 mr-2" />
-                  Add More
+                  {t('add_more')}
                 </Button>
               </div>
 
@@ -360,7 +369,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      
+
                       <p className="text-xs text-gray-500">
                         {(mediaFile.file.size / 1024 / 1024).toFixed(2)} MB • {mediaFile.type}
                       </p>
@@ -393,7 +402,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
               <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg">
                 <Upload className="h-12 w-12 text-green-500 mx-auto mb-4" />
                 <p className="text-lg font-medium text-gray-900 dark:text-white text-center">
-                  Drop files to upload
+                  {t('drop_to_upload')}
                 </p>
               </div>
             </div>
@@ -404,7 +413,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
         {mediaFiles.length > 0 && (
           <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {mediaFiles.length} file{mediaFiles.length !== 1 ? 's' : ''} ready to send
+              {t('files_ready', { count: mediaFiles.length })}
             </p>
             <div className="flex gap-3">
               <Button
@@ -412,7 +421,7 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
                 onClick={onClose}
                 disabled={isUploading}
               >
-                Cancel
+                {t('cancel')}
               </Button>
               <Button
                 onClick={handleSend}
@@ -422,12 +431,12 @@ export function MediaUpload({ isOpen, onClose, onSend, selectedUser }: MediaUplo
                 {isUploading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Sending...
+                    {t('sending_message')}
                   </>
                 ) : (
                   <>
                     <Send className="h-4 w-4 mr-2" />
-                    Send {mediaFiles.length} file{mediaFiles.length !== 1 ? 's' : ''}
+                    {t('send_files', { count: mediaFiles.length })}
                   </>
                 )}
               </Button>

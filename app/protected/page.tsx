@@ -8,6 +8,8 @@ import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Settings } from "lucide-react";
 import Link from "next/link";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 interface ChatUser {
   id: string;
@@ -63,6 +65,7 @@ export default function ChatPage() {
   const [broadcastGroupId, setBroadcastGroupId] = useState<string | null>(null);
   const [broadcastGroupName, setBroadcastGroupName] = useState<string | null>(null);
   const supabase = createFrontendClient();
+  const { t } = useTranslation();
 
   // Define handleBackToUsers early so it can be used in useEffect
   const handleBackToUsers = useCallback(() => {
@@ -76,7 +79,7 @@ export default function ChatPage() {
     const checkScreenSize = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
+
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
@@ -106,12 +109,12 @@ export default function ChatPage() {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
-      
+
       if (user) {
         // Check if user has completed setup
         const response = await fetch('/api/settings/save');
         const data = await response.json();
-        
+
         const setupComplete = data.settings?.access_token_added || data.settings?.webhook_verified;
         setIsSetupComplete(setupComplete);
         setCheckingSetup(false);
@@ -129,16 +132,16 @@ export default function ChatPage() {
 
     const fetchUsers = async () => {
       console.log('Fetching user conversations...');
-      
+
       // Use the updated user_conversations view with enhanced name handling
       const { data, error } = await supabase
         .from('user_conversations')
         .select('*')
         .order('has_unread', { ascending: false })
         .order('last_message_time', { ascending: false });
-      
 
-      console.log(data,'conversation data');
+
+      console.log(data, 'conversation data');
       if (error) {
         console.error('Error fetching users:', error);
         return;
@@ -146,7 +149,7 @@ export default function ChatPage() {
 
       if (data) {
         console.log(`Fetched ${data.length} user conversations`);
-        
+
         // Transform data to match ChatUser interface
         const transformedUsers: ChatUser[] = data.map(user => ({
           id: user.id,
@@ -174,7 +177,7 @@ export default function ChatPage() {
     const preloadUnreadConversations = async () => {
       try {
         console.log('Preloading unread conversations...');
-        
+
         // Get top 10 unread conversations
         const { data: unreadConversations, error } = await supabase.rpc('get_unread_conversations', {
           limit_count: 10
@@ -187,7 +190,7 @@ export default function ChatPage() {
 
         if (unreadConversations && unreadConversations.length > 0) {
           console.log(`Preloading messages for ${unreadConversations.length} unread conversations`);
-          
+
           // Preload messages for each unread conversation (in parallel)
           const preloadPromises = unreadConversations.map(async (conversation: UnreadConversation) => {
             try {
@@ -221,10 +224,10 @@ export default function ChatPage() {
     // Set up real-time subscription for users table changes
     const usersSubscription = supabase
       .channel('users-channel-optimized')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'users' 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'users'
       }, (payload) => {
         console.log('Users table change:', payload.eventType);
         // Debounce the refresh to avoid excessive calls
@@ -235,20 +238,20 @@ export default function ChatPage() {
     // Set up real-time subscription for messages table changes
     const messagesSubscription = supabase
       .channel('messages-global-channel-optimized')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'messages' 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messages'
       }, async (payload) => {
         console.log('Messages table change:', payload.eventType);
-        
+
         // Update specific user in list based on message change
         const message = payload.new as MessagePayload;
         if (message) {
           const otherUserId = message.sender_id === user?.id ? message.receiver_id : message.sender_id;
           const isFromMe = message.sender_id === user?.id;
           const isCurrentlyViewing = selectedUser?.id === otherUserId;
-          
+
           // Recalculate unread count from database for accuracy
           let actualUnreadCount = 0;
           if (!isFromMe && !isCurrentlyViewing) {
@@ -258,7 +261,7 @@ export default function ChatPage() {
                 .select('unread_count')
                 .eq('id', otherUserId)
                 .single();
-              
+
               if (!unreadError && unreadData) {
                 actualUnreadCount = unreadData.unread_count || 0;
                 console.log(`Recalculated unread count for ${otherUserId}: ${actualUnreadCount}`);
@@ -269,13 +272,13 @@ export default function ChatPage() {
               actualUnreadCount = -1; // Signal to use fallback
             }
           }
-          
+
           // Update the specific user's last message and unread count
           setUsers((prevUsers) => {
             const updatedUsers = prevUsers.map(u => {
               if (u.id === otherUserId) {
                 const shouldIncrementUnread = !isFromMe && !isCurrentlyViewing;
-                
+
                 return {
                   ...u,
                   last_message: message.content || '',
@@ -283,14 +286,14 @@ export default function ChatPage() {
                   last_message_type: message.message_type || 'text',
                   last_message_sender: message.sender_id,
                   // Use recalculated unread count if available, otherwise increment optimistically
-                  unread_count: shouldIncrementUnread 
+                  unread_count: shouldIncrementUnread
                     ? (actualUnreadCount >= 0 ? actualUnreadCount : (u.unread_count || 0) + 1)
                     : u.unread_count
                 };
               }
               return u;
             });
-            
+
             // Re-sort users after update (unread first, then by time)
             return updatedUsers.sort((a, b) => {
               if ((a.unread_count || 0) > 0 && (b.unread_count || 0) === 0) return -1;
@@ -301,7 +304,7 @@ export default function ChatPage() {
             });
           });
         }
-        
+
         // Also debounce a full refresh as fallback for any edge cases
         setTimeout(fetchUsers, 2000);
       })
@@ -323,21 +326,21 @@ export default function ChatPage() {
 
     const fetchMessages = async () => {
       console.log(`Fetching messages between ${user.id} and ${selectedUser.id}`);
-      
+
       // Use the database function to get conversation messages
       const { data, error } = await supabase.rpc('get_conversation_messages', {
         other_user_id: selectedUser.id
       });
 
-      console.log(data,'conversation messages data');
-      
+      console.log(data, 'conversation messages data');
+
       if (error) {
         console.error('Error fetching messages:', error);
         console.error('Error details:', JSON.stringify(error, null, 2));
         console.error('Selected user ID:', selectedUser.id);
         console.error('Current user ID:', user.id);
       } else {
-        console.log(data,'data');
+        console.log(data, 'data');
         console.log(`Fetched ${data?.length || 0} messages`);
         // Map message_timestamp back to timestamp for the interface and ensure is_sent_by_me is set
         const mappedMessages = (data || []).map((msg: MessagePayload & { message_timestamp?: string; is_sent_by_me?: boolean }) => ({
@@ -347,7 +350,7 @@ export default function ChatPage() {
           is_sent_by_me: msg.is_sent_by_me !== undefined ? msg.is_sent_by_me : msg.sender_id === user.id
         }));
         setMessages(mappedMessages);
-        
+
         // Debug: Log first few messages to check is_sent_by_me values
         if (mappedMessages.length > 0) {
           console.log('Sample messages with is_sent_by_me:', mappedMessages.slice(0, 3).map((m: Message) => ({
@@ -366,30 +369,30 @@ export default function ChatPage() {
     const channelName = `messages-${user.id}-${selectedUser.id}-${Date.now()}`;
     const messagesSubscription = supabase
       .channel(channelName)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
         table: 'messages'
       }, (payload) => {
         console.log('New message received via real-time:', payload);
-        
+
         const newMessage = payload.new as MessagePayload;
-        
+
         // Check if this message belongs to the current conversation
-        const isRelevantMessage = 
+        const isRelevantMessage =
           (newMessage.sender_id === user.id && newMessage.receiver_id === selectedUser.id) ||
           (newMessage.sender_id === selectedUser.id && newMessage.receiver_id === user.id);
-        
+
         if (isRelevantMessage) {
           console.log('Adding message to conversation');
-          
+
           // Determine if this message was sent by the current user
           const messageWithFlag = {
             ...newMessage,
             is_sent_by_me: newMessage.sender_id === user.id,
             timestamp: newMessage.timestamp || new Date().toISOString()
           };
-          
+
           console.log('Real-time message flags:', {
             message_id: messageWithFlag.id,
             sender_id: newMessage.sender_id,
@@ -397,14 +400,14 @@ export default function ChatPage() {
             is_sent_by_me: messageWithFlag.is_sent_by_me,
             content: messageWithFlag.content?.substring(0, 20)
           });
-          
+
           setMessages((prev) => {
             // Avoid duplicates (check for both regular ID and optimistic ID)
-            const exists = prev.find(m => 
-              m.id === messageWithFlag.id || 
+            const exists = prev.find(m =>
+              m.id === messageWithFlag.id ||
               (m.id.startsWith('optimistic_') && m.content === messageWithFlag.content && m.timestamp === messageWithFlag.timestamp)
             );
-            
+
             if (exists) {
               // Replace optimistic message with real one
               if (exists.id.startsWith('optimistic_')) {
@@ -412,10 +415,10 @@ export default function ChatPage() {
               }
               return prev;
             }
-            
+
             // Insert message in correct chronological order
             const newMessages = [...prev, messageWithFlag];
-            return newMessages.sort((a, b) => 
+            return newMessages.sort((a, b) =>
               new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
           });
@@ -432,28 +435,28 @@ export default function ChatPage() {
           }
         }
       })
-      .on('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
         table: 'messages'
       }, (payload) => {
         console.log('Message updated:', payload);
-        
+
         const updatedMessage = payload.new as MessagePayload;
-        
+
         // Check if this message belongs to the current conversation
-        const isRelevantMessage = 
+        const isRelevantMessage =
           (updatedMessage.sender_id === user.id && updatedMessage.receiver_id === selectedUser.id) ||
           (updatedMessage.sender_id === selectedUser.id && updatedMessage.receiver_id === user.id);
-        
+
         if (isRelevantMessage) {
           const messageWithFlag = {
             ...updatedMessage,
             is_sent_by_me: updatedMessage.sender_id === user.id,
             timestamp: updatedMessage.timestamp || new Date().toISOString()
           };
-          
-          setMessages((prev) => 
+
+          setMessages((prev) =>
             prev.map(m => m.id === updatedMessage.id ? messageWithFlag : m)
           );
         }
@@ -480,11 +483,11 @@ export default function ChatPage() {
 
     const fetchBroadcastMessages = async () => {
       console.log(`Fetching broadcast messages for group ${broadcastGroupId}`);
-      
+
       try {
         const response = await fetch(`/api/groups/${broadcastGroupId}/messages`);
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
           console.log(`Fetched ${result.messages?.length || 0} broadcast messages`);
           setMessages(result.messages || []);
@@ -504,37 +507,37 @@ export default function ChatPage() {
     const channelName = `broadcast-${broadcastGroupId}-${Date.now()}`;
     const messagesSubscription = supabase
       .channel(channelName)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
         table: 'messages'
       }, (payload) => {
         console.log('New broadcast message received via real-time:', payload);
-        
+
         const newMessage = payload.new as MessagePayload;
-        
+
         // Check if this message belongs to the current broadcast group
         try {
           const mediaData = typeof newMessage.media_data === 'string'
             ? JSON.parse(newMessage.media_data)
             : newMessage.media_data;
-          
+
           if (mediaData?.broadcast_group_id === broadcastGroupId) {
             console.log('Adding broadcast message to window');
-            
+
             const messageWithFlag = {
               ...newMessage,
               is_sent_by_me: true,
               timestamp: newMessage.timestamp || new Date().toISOString()
             };
-            
+
             setMessages((prev) => {
               // Avoid duplicates
               const exists = prev.find(m => m.id === messageWithFlag.id);
               if (exists) return prev;
-              
+
               // Add message and sort by timestamp
-              return [...prev, messageWithFlag].sort((a, b) => 
+              return [...prev, messageWithFlag].sort((a, b) =>
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
               );
             });
@@ -556,22 +559,22 @@ export default function ChatPage() {
   // Handle user selection and mark messages as read
   const handleUserSelect = async (selectedUser: ChatUser) => {
     console.log('User selected:', selectedUser);
-    
+
     // Clear broadcast group state when selecting an individual user
     setBroadcastGroupId(null);
     setBroadcastGroupName(null);
-    
+
     setSelectedUser(selectedUser);
-    console.log(selectedUser,'selectedUser');
-    
+    console.log(selectedUser, 'selectedUser');
+
     // Immediately clear unread count in UI for better UX
     if (selectedUser.unread_count && selectedUser.unread_count > 0) {
-      setUsers(prev => prev.map(u => 
-        u.id === selectedUser.id 
+      setUsers(prev => prev.map(u =>
+        u.id === selectedUser.id
           ? { ...u, unread_count: 0 }
           : u
       ));
-      
+
       // Mark messages as read in the background
       try {
         const response = await fetch('/api/messages/mark-read', {
@@ -590,8 +593,8 @@ export default function ChatPage() {
         } else {
           console.error('Failed to mark messages as read');
           // Revert unread count if API fails
-          setUsers(prev => prev.map(u => 
-            u.id === selectedUser.id 
+          setUsers(prev => prev.map(u =>
+            u.id === selectedUser.id
               ? { ...u, unread_count: selectedUser.unread_count }
               : u
           ));
@@ -599,8 +602,8 @@ export default function ChatPage() {
       } catch (error) {
         console.error('Error marking messages as read:', error);
         // Revert unread count if API fails
-        setUsers(prev => prev.map(u => 
-          u.id === selectedUser.id 
+        setUsers(prev => prev.map(u =>
+          u.id === selectedUser.id
             ? { ...u, unread_count: selectedUser.unread_count }
             : u
         ));
@@ -616,15 +619,15 @@ export default function ChatPage() {
 
   const refreshUsers = useCallback(async () => {
     if (!user) return;
-    
+
     console.log('Refreshing user conversations...');
-    
+
     const { data, error } = await supabase
       .from('user_conversations')
       .select('*')
       .order('has_unread', { ascending: false })
       .order('last_message_time', { ascending: false });
-    
+
     if (error) {
       console.error('Error refreshing users:', error);
       return;
@@ -669,7 +672,7 @@ export default function ChatPage() {
       }
 
       console.log('Name updated successfully:', result);
-      
+
       // Refresh users list to show updated name
       await refreshUsers();
 
@@ -681,15 +684,15 @@ export default function ChatPage() {
 
   const handleBroadcastToGroup = useCallback((groupId: string, groupName: string) => {
     console.log('Broadcasting to group:', groupName);
-    
+
     // Clear individual user state
     setSelectedUser(null);
     setMessages([]);
-    
+
     // Set broadcast group state
     setBroadcastGroupId(groupId);
     setBroadcastGroupName(groupName);
-    
+
     // Show chat window on mobile
     setShowChat(true);
   }, []);
@@ -698,17 +701,17 @@ export default function ChatPage() {
     if (!broadcastGroupId || !user || sendingMessage) return;
 
     setSendingMessage(true);
-    
+
     // Generate optimistic message ID
     const optimisticId = `optimistic_broadcast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString();
-    
+
     // Check if content is a template (JSON format)
     let requestBody;
     let messageContent = content;
     let messageType = 'text';
     let isTemplate = false;
-    
+
     try {
       const parsedContent = JSON.parse(content);
       if (parsedContent.type === 'template') {
@@ -736,7 +739,7 @@ export default function ChatPage() {
         messageType: 'text',
       };
     }
-    
+
     // Create optimistic message for instant UI feedback
     const optimisticMessage: Message = {
       id: optimisticId,
@@ -748,13 +751,13 @@ export default function ChatPage() {
       message_type: messageType,
       media_data: isTemplate ? content : JSON.stringify({ broadcast_group_id: broadcastGroupId })
     };
-    
+
     // Add optimistic message to UI immediately
     setMessages((prev) => [...prev, optimisticMessage]);
-    
+
     try {
       console.log(`Broadcasting message to group ${broadcastGroupId}`);
-      
+
       const response = await fetch(`/api/groups/${broadcastGroupId}/broadcast`, {
         method: 'POST',
         headers: {
@@ -770,29 +773,29 @@ export default function ChatPage() {
       }
 
       console.log('Broadcast sent successfully:', result);
-      
+
       // Remove optimistic message and refresh to get real messages
       setMessages((prev) => prev.filter(m => m.id !== optimisticId));
-      
+
       // Refresh broadcast messages to show the real ones
       const messagesResponse = await fetch(`/api/groups/${broadcastGroupId}/messages`);
       const messagesResult = await messagesResponse.json();
       if (messagesResponse.ok && messagesResult.success) {
         setMessages(messagesResult.messages || []);
       }
-      
+
       // Show success message
       alert(`Broadcast sent to ${result.results.success}/${result.results.total} members`);
-      
+
       // Refresh users list to show the broadcast messages
       await refreshUsers();
-      
+
     } catch (error) {
       console.error('Error sending broadcast:', error);
-      
+
       // Remove optimistic message on error
       setMessages((prev) => prev.filter(m => m.id !== optimisticId));
-      
+
       alert(`Failed to send broadcast: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSendingMessage(false);
@@ -805,15 +808,15 @@ export default function ChatPage() {
       await handleSendBroadcast(content);
       return;
     }
-    
+
     if (!selectedUser || !user || sendingMessage) return;
 
     setSendingMessage(true);
-    
+
     // Generate optimistic message ID
     const optimisticId = `optimistic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString();
-    
+
     // Create optimistic message for instant UI feedback
     const optimisticMessage: Message = {
       id: optimisticId,
@@ -825,13 +828,13 @@ export default function ChatPage() {
       message_type: 'text',
       media_data: null
     };
-    
+
     // Add optimistic message to UI immediately
     setMessages((prev) => [...prev, optimisticMessage]);
-    
+
     try {
       console.log(`Sending message to ${selectedUser.id}: ${content}`);
-      
+
       // Call the WhatsApp API endpoint which handles both WhatsApp sending and database storage
       const response = await fetch('/api/send-message', {
         method: 'POST',
@@ -851,19 +854,19 @@ export default function ChatPage() {
       }
 
       console.log('Message sent successfully:', result);
-      
+
       // The message will be replaced by the real one via real-time subscription
       // The subscription handler will detect the optimistic ID and replace it
-      
+
     } catch (error) {
       console.error('Error sending message:', error);
-      
+
       // Remove optimistic message on error
       setMessages((prev) => prev.filter(m => m.id !== optimisticId));
-      
+
       // Show error to user
       alert(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
+
       // Fallback: Store in database only if WhatsApp API fails
       try {
         const fallbackMessage = {
@@ -895,44 +898,49 @@ export default function ChatPage() {
   // Show loading state while checking setup
   if (!user || checkingSetup) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="h-full flex items-center justify-center relative">
+        <div className="absolute top-4 right-4">
+          <LanguageSwitcher />
+        </div>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p>Loading...</p>
+          <p>{t('loading')}</p>
         </div>
       </div>
     );
   }
-  
+
   // Show setup required message if setup is not complete
   if (isSetupComplete === false) {
     return (
-      <div className="h-full flex items-center justify-center p-4">
+      <div className="h-full flex items-center justify-center p-4 relative">
+        <div className="absolute top-4 right-4">
+          <LanguageSwitcher />
+        </div>
         <div className="max-w-md w-full text-center space-y-6">
           <div className="flex justify-center">
             <div className="bg-amber-100 dark:bg-amber-900/30 p-4 rounded-full">
               <AlertCircle className="h-12 w-12 text-amber-600 dark:text-amber-400" />
             </div>
           </div>
-          
+
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold">Setup Required</h2>
+            <h2 className="text-2xl font-bold">{t('setup_required')}</h2>
             <p className="text-muted-foreground">
-              Please complete the WhatsApp setup to access the chat interface. 
-              You need to configure either the Access Token or Webhook to continue.
+              {t('setup_required_description')}
             </p>
           </div>
-          
+
           <div className="space-y-3">
             <Link href="/protected/setup">
               <Button className="w-full" size="lg">
                 <Settings className="mr-2 h-5 w-5" />
-                Go to Setup
+                {t('go_to_setup')}
               </Button>
             </Link>
-            
+
             <p className="text-xs text-muted-foreground">
-              This will only take a few minutes
+              {t('setup_time_estimate')}
             </p>
           </div>
         </div>
@@ -941,13 +949,16 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-full flex bg-background">
+    <div className="h-full flex bg-background relative">
+      <div className="absolute top-4 right-4 z-50">
+        <LanguageSwitcher />
+      </div>
       {/* Desktop Layout */}
       {!isMobile && (
         <>
           {/* User List - Desktop */}
           <div className="w-1/3 border-r border-border">
-            <UserList 
+            <UserList
               users={users}
               selectedUser={selectedUser}
               onUserSelect={handleUserSelect}
@@ -956,7 +967,7 @@ export default function ChatPage() {
               onBroadcastToGroup={handleBroadcastToGroup}
             />
           </div>
-          
+
           {/* Chat Window - Desktop */}
           <div className="flex-1">
             <ChatWindow
@@ -983,7 +994,7 @@ export default function ChatPage() {
           {!showChat ? (
             // User List - Mobile
             <div className="w-full">
-              <UserList 
+              <UserList
                 users={users}
                 selectedUser={selectedUser}
                 onUserSelect={handleUserSelect}
@@ -991,7 +1002,7 @@ export default function ChatPage() {
                 onUsersUpdate={refreshUsers}
                 onBroadcastToGroup={handleBroadcastToGroup}
               />
-      </div>
+            </div>
           ) : (
             // Chat Window - Mobile
             <div className="w-full">
@@ -1009,7 +1020,7 @@ export default function ChatPage() {
                 onUpdateName={handleUpdateName}
                 broadcastGroupName={broadcastGroupName}
               />
-      </div>
+            </div>
           )}
         </>
       )}

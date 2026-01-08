@@ -13,6 +13,7 @@ import { GroupsList } from "./groups-list";
 import { GroupManagementDialog } from "./group-management-dialog";
 import { DebouncedInput } from "../custom-ui/debounced-input";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { useTranslation } from "react-i18next";
 
 interface ChatUser {
   id: string;
@@ -69,6 +70,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
 
   const supabase = createFrontendClient();
   const router = useRouter();
+  const { t } = useTranslation();
 
   // Load groups on component mount
   useEffect(() => {
@@ -127,19 +129,19 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
     // Handle media messages
     if (user.last_message_type && user.last_message_type !== 'text') {
       const isFromCurrentUser = user.last_message_sender === currentUserId;
-      const prefix = isFromCurrentUser ? "You: " : "";
+      const prefix = isFromCurrentUser ? `${t('you')}: ` : "";
 
       switch (user.last_message_type) {
         case 'image':
-          return `${prefix}📷 Photo`;
+          return `${prefix}📷 ${t('media_photo')}`;
         case 'video':
-          return `${prefix}🎥 Video`;
+          return `${prefix}🎥 ${t('media_video')}`;
         case 'audio':
-          return `${prefix}🎵 Audio`;
+          return `${prefix}🎵 ${t('media_audio')}`;
         case 'document':
-          return `${prefix}📄 Document`;
+          return `${prefix}📄 ${t('media_document')}`;
         default:
-          return `${prefix}📎 Media`;
+          return `${prefix}📎 ${t('media_generic')}`;
       }
     }
 
@@ -451,7 +453,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <MessageCircle className="h-6 w-6" />
-            <h1 className="text-lg font-semibold">WhatsApp</h1>
+            <h1 className="text-lg font-semibold">{t('whatsapp')}</h1>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -628,12 +630,11 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
             className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-green-500"
           /> */}
           <DebouncedInput
-            placeholder="Search conversations..."
+            placeholder={t('search_conversations')}
             value={searchTerm}
             debounceMs={1500}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-green-500"
-
           />
         </div>
       </div>
@@ -655,7 +656,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
       <div className="flex-1 overflow-y-auto">
         {filteredUsers.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
-            {searchTerm ? "No conversations found" : "No conversations yet"}
+            {searchTerm ? t('no_conversations_found') : t('no_conversations_yet')}
             {!searchTerm && (
               <div className="mt-4">
                 <Button
@@ -665,7 +666,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
                   className="gap-2"
                 >
                   <Plus className="h-4 w-4" />
-                  Start New Chat
+                  {t('start_new_chat')}
                 </Button>
               </div>
             )}
