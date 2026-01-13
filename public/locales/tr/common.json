@@ -99,5 +99,16 @@
     "custom_name": "Özel İsim",
     "custom_name_info": "Bu isim sadece sizin tarafınızdan görülebilir",
     "last_active_label": "Son Görülme",
-    "done": "Tamam"
+    "done": "Tamam",
+    "broadcast": "Yayın",
+    "broadcast_to": "Yayın gönder:",
+    "broadcast_description": "Buraya gönderilen mesajlar tüm grup üyelerine bireysel olarak iletilecektir.",
+    "sending_broadcast": "Yayın gönderiliyor...",
+    "send_message_to_group": "Bu gruba mesaj gönder",
+    "type_broadcast_message": "Bir yayın mesajı yazın",
+    "attach_media": "Medya ekle",
+    "send_template": "Şablon gönder",
+    "view_contact_info": "Kişi bilgisini görüntüle",
+    "close_chat": "Sohbeti kapat",
+    "back_to_contacts": "Kişilere dön"
 }

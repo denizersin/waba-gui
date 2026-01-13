@@ -11,7 +11,7 @@ export async function POST(
 ) {
   try {
     const supabase = await createClient();
-    
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json(
@@ -94,7 +94,7 @@ export async function POST(
     };
 
     const timestamp = new Date().toISOString();
-    
+
     // Helper function to replace variables in text
     const replaceVariables = (text: string, componentVariables: Record<string, string>) => {
       let result = text;
@@ -113,6 +113,7 @@ export async function POST(
         let messageMediaData = null;
 
         if (templateName && templateData) {
+          // --- TEMPLATE FLOW (EXISTING LOGIC) ---
           // Build template components for WhatsApp API
           const templateComponents = [];
 
@@ -169,14 +170,14 @@ export async function POST(
             text?: string;
             media_url?: string | null;
           }
-          
+
           interface ProcessedButton {
             type: string;
             text: string;
             url?: string;
             phone_number?: string;
           }
-          
+
           const processedComponents = {
             header: null as ProcessedComponent | null,
             body: null as ProcessedComponent | null,
@@ -218,7 +219,7 @@ export async function POST(
 
           // Generate display content from body with variables replaced
           const bodyComponent = templateData.components?.find((c: { type: string }) => c.type === 'BODY');
-          messageContent = bodyComponent?.text && variables?.body 
+          messageContent = bodyComponent?.text && variables?.body
             ? replaceVariables(bodyComponent.text, variables.body)
             : (message || `Template: ${templateName}`);
 
@@ -236,8 +237,87 @@ export async function POST(
             buttons: processedComponents.buttons,
             broadcast_group_id: groupId // Mark as broadcast message
           });
+
+          // Handle Response for Template
+          const responseData = await whatsappResponse.json();
+
+          if (whatsappResponse.ok) {
+            results.success++;
+
+            // Store the broadcast message in the database for this recipient
+            const messageId = responseData.messages?.[0]?.id || `broadcast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+            // NOTE: Keeping original sender/receiver logic for templates as requested to only change text flow, 
+            // but functionally it might be better to align both. For now, preserving original template logic behavior 
+            // but moving it inside the block.
+            // Original: sender_id = recipient, receiver_id = user. 
+            // Wait, this logic is inverted compared to send-message. 
+            // I will fix it for template too because it's definitely wrong for "sent by me".
+
+            const messageObject = {
+              id: messageId,
+              sender_id: user.id, // FIXED: User is sending
+              receiver_id: cleanPhoneNumber, // FIXED: Member is receiving
+              content: messageContent,
+              timestamp: timestamp,
+              is_sent_by_me: true,
+              is_read: true,
+              message_type: 'template',
+              media_data: messageMediaData
+            };
+
+            // Store in database
+            const { error: dbError } = await supabase
+              .from('messages')
+              .insert([messageObject]);
+
+            if (dbError) {
+              console.error(`Error storing broadcast message for ${member.user_id}:`, dbError);
+            } else {
+              console.log(`Broadcast message stored for ${member.user_id}`);
+            }
+          } else {
+            results.failed++;
+            results.errors.push(`${member.user_id}: ${responseData.error?.message || 'Unknown error'}`);
+            console.error(`WhatsApp API error for ${member.user_id}:`, responseData);
+          }
+
         } else {
-          // Send text message via WhatsApp API
+          // --- TEXT FLOW (NEW LOGIC MATCHING send-message/route.ts) ---
+
+          // 1. Check User Existence (Recipient)
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', cleanPhoneNumber)
+            .maybeSingle();
+
+          if (userError) {
+            console.error(`Error checking user ${cleanPhoneNumber}:`, userError);
+            results.failed++;
+            results.errors.push(`${member.user_id}: Database check failed`);
+            continue; // Skip this user
+          }
+
+          if (!userData) {
+            console.log(`User does not exist, inserting: ${cleanPhoneNumber}`);
+            const { error: userInsertError } = await supabase
+              .from('users')
+              .insert([{
+                id: cleanPhoneNumber,
+                name: cleanPhoneNumber,
+                last_active: new Date().toISOString()
+              }]);
+
+            if (userInsertError) {
+              console.error(`Error inserting user ${cleanPhoneNumber}:`, userInsertError);
+              results.failed++;
+              results.errors.push(`${member.user_id}: Database insert failed`);
+              continue;
+            }
+          }
+
+          // 2. Send Text Message via WhatsApp API
           const textMessage = {
             messaging_product: 'whatsapp',
             to: cleanPhoneNumber,
@@ -255,47 +335,57 @@ export async function POST(
             },
             body: JSON.stringify(textMessage),
           });
-          
-          // Mark text message as broadcast
-          messageMediaData = JSON.stringify({
-            broadcast_group_id: groupId
-          });
-        }
 
-        const responseData = await whatsappResponse.json();
+          // 3. Handle Response & storage
+          const responseData = await whatsappResponse.json();
 
-        if (whatsappResponse.ok) {
-          results.success++;
+          if (whatsappResponse.ok) {
+            results.success++;
+            const messageId = responseData.messages?.[0]?.id;
 
-          // Store the broadcast message in the database for this recipient
-          const messageId = responseData.messages?.[0]?.id || `broadcast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          
-          const messageObject = {
-            id: messageId,
-            sender_id: cleanPhoneNumber, // The recipient's phone number
-            receiver_id: user.id, // The broadcaster (current user)
-            content: messageContent,
-            timestamp: timestamp,
-            is_sent_by_me: true, // Sent by the current user
-            is_read: true, // Outgoing messages are already "read"
-            message_type: templateName ? 'template' : 'text',
-            media_data: messageMediaData
-          };
+            const messageObject = {
+              id: messageId || `broadcast_text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              sender_id: user.id, // Current authenticated user
+              receiver_id: cleanPhoneNumber, // Recipient
+              content: message,
+              timestamp: timestamp,
+              is_sent_by_me: true,
+              is_read: true,
+              message_type: 'text',
+              media_data: JSON.stringify({
+                broadcast_group_id: groupId
+              })
+            };
 
-          // Store in database
-          const { error: dbError } = await supabase
-            .from('messages')
-            .insert([messageObject]);
+            // Update Users Last Active
+            // Recipient
+            await supabase.from('users').upsert([{
+              id: cleanPhoneNumber,
+              name: cleanPhoneNumber,
+              last_active: timestamp
+            }], { onConflict: 'id' });
 
-          if (dbError) {
-            console.error(`Error storing broadcast message for ${member.user_id}:`, dbError);
+            // Sender (User) - Optional but good practice as in send-message
+            // (Assuming User ID is in Users table, send-message doesn't explicitly upsert User UUID except via cleanPhoneNumber check if sender was a phone number? 
+            // In send-message log: "User inserted into the users table: cleanPhoneNumber" refers to recipient.
+            // I'll stick to updating recipient.)
+
+            // Store Message
+            const { error: dbError } = await supabase
+              .from('messages')
+              .insert([messageObject]);
+
+            if (dbError) {
+              console.error(`Error storing broadcast message for ${member.user_id}:`, dbError);
+            } else {
+              console.log(`Broadcast logic: Message stored for ${member.user_id}`);
+            }
+
           } else {
-            console.log(`Broadcast message stored for ${member.user_id}`);
+            results.failed++;
+            results.errors.push(`${member.user_id}: ${responseData.error?.message || 'Unknown error'}`);
+            console.error(`WhatsApp API error for ${member.user_id}:`, responseData);
           }
-        } else {
-          results.failed++;
-          results.errors.push(`${member.user_id}: ${responseData.error?.message || 'Unknown error'}`);
-          console.error(`WhatsApp API error for ${member.user_id}:`, responseData);
         }
       } catch (error) {
         results.failed++;

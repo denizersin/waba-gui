@@ -99,5 +99,16 @@
     "custom_name": "Custom Name",
     "custom_name_info": "This name is only visible to you",
     "last_active_label": "Last Active",
-    "done": "Done"
+    "done": "Done",
+    "broadcast": "Broadcast",
+    "broadcast_to": "Broadcast to",
+    "broadcast_description": "Messages sent here will be delivered to all group members individually.",
+    "sending_broadcast": "Sending broadcast...",
+    "send_message_to_group": "Send a message to this group",
+    "type_broadcast_message": "Type a broadcast message",
+    "attach_media": "Attach media",
+    "send_template": "Send template",
+    "view_contact_info": "View contact info",
+    "close_chat": "Close chat",
+    "back_to_contacts": "Back to contacts"
 }

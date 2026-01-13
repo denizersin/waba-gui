@@ -16,10 +16,11 @@ interface ChatUser {
 }
 
 interface Group {
-  id: string;
-  name: string;
+  group_id: string;
+  group_name: string;
   description?: string;
   member_count: number;
+  unread_count?: number;
 }
 
 interface GroupManagementDialogProps {
@@ -47,9 +48,9 @@ export function GroupManagementDialog({
   // Load existing group data if editing
   useEffect(() => {
     if (group) {
-      setName(group.name);
+      setName(group.group_name);
       setDescription(group.description || "");
-      loadGroupMembers(group.id);
+      loadGroupMembers(group.group_id);
     } else {
       setName("");
       setDescription("");
@@ -61,7 +62,7 @@ export function GroupManagementDialog({
     try {
       const response = await fetch(`/api/groups/${groupId}/members`);
       const data = await response.json();
-      
+
       if (data.success && data.members) {
         setSelectedUserIds(data.members.map((m: { user_id: string }) => m.user_id));
       }
@@ -95,7 +96,7 @@ export function GroupManagementDialog({
     try {
       if (group) {
         // Update existing group
-        const updateResponse = await fetch(`/api/groups/${group.id}`, {
+        const updateResponse = await fetch(`/api/groups/${group.group_id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, description }),
@@ -106,7 +107,7 @@ export function GroupManagementDialog({
         }
 
         // Get current members
-        const membersResponse = await fetch(`/api/groups/${group.id}/members`);
+        const membersResponse = await fetch(`/api/groups/${group.group_id}/members`);
         const membersData = await membersResponse.json();
         const currentMemberIds = membersData.members?.map((m: { user_id: string }) => m.user_id) || [];
 
@@ -116,7 +117,7 @@ export function GroupManagementDialog({
 
         // Add new members
         if (toAdd.length > 0) {
-          await fetch(`/api/groups/${group.id}/members`, {
+          await fetch(`/api/groups/${group.group_id}/members`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userIds: toAdd }),
@@ -125,7 +126,7 @@ export function GroupManagementDialog({
 
         // Remove members
         for (const userId of toRemove) {
-          await fetch(`/api/groups/${group.id}/members?userId=${userId}`, {
+          await fetch(`/api/groups/${group.group_id}/members?userId=${userId}`, {
             method: 'DELETE',
           });
         }
@@ -218,7 +219,7 @@ export function GroupManagementDialog({
           {/* Members Selection */}
           <div className="space-y-3">
             <Label>Select Members * ({selectedUserIds.length} selected)</Label>
-            
+
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />

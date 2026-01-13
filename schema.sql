@@ -209,7 +209,7 @@ BEGIN
        AND m.receiver_id = (SELECT id FROM auth.users() LIMIT 1)
        AND m.is_read = false
       )
-    ), 0) AS unread_count,
+    ), 0)::bigint AS unread_count,
     cg.created_at,
     cg.updated_at
   FROM chat_groups cg

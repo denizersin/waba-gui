@@ -29,8 +29,8 @@ interface ChatUser {
 }
 
 interface Group {
-  id: string;
-  name: string;
+  group_id: string;
+  group_name: string;
   description?: string;
   member_count: number;
   unread_count?: number;
@@ -74,7 +74,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
 
   // Load groups on component mount
   useEffect(() => {
-    // loadGroups();
+    loadGroups();
   }, []);
 
   const loadGroups = async () => {
@@ -388,9 +388,9 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
   };
 
   const handleBroadcastToGroup = (groupId: string) => {
-    const group = groups.find(g => g.id === groupId);
+    const group = groups.find(g => g.group_id === groupId);
     if (group && onBroadcastToGroup) {
-      onBroadcastToGroup(groupId, group.name);
+      onBroadcastToGroup(groupId, group.group_name);
     }
   };
 
