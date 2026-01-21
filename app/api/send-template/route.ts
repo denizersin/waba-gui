@@ -255,6 +255,8 @@ export async function POST(request: NextRequest) {
         // Parse request body - support both new and legacy formats
         const requestBody: SendTemplateRequest = await request.json();
 
+        console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
         // Support both 'to' and 'phone' for backwards compatibility
         const to = requestBody.to || requestBody.phone;
         const templateName = requestBody.templateName;
