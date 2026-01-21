@@ -448,6 +448,25 @@ export async function POST(request: NextRequest) {
 
         let finalText = text;
 
+        // If text is not provided, generate it from template body
+        if (!finalText && templateData) {
+            // Find body component from templateData
+            const bodyComponent = templateData.formatted_components?.body ||
+                templateData.components?.find(c => c.type === 'BODY' || c.type === 'body');
+
+            if (bodyComponent?.text) {
+                finalText = bodyComponent.text;
+
+                // Replace placeholders {{1}}, {{2}}, etc. with actual variable values
+                if (requestBody.variables?.body) {
+                    const bodyVars = requestBody.variables.body;
+                    Object.keys(bodyVars).forEach(key => {
+                        finalText = finalText!.replace(`{{${key}}}`, bodyVars[key]);
+                    });
+                }
+            }
+        }
+
         let displayContent = finalText || templateName
 
         // Store message in database
