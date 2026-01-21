@@ -2,13 +2,59 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { env } from 'process';
 
-interface SendTemplateRequest {
-    language: string;
-    phone: string;
-    customer_name?: string;
-    template: string;
+interface TemplateComponent {
+    type: string;
+    format?: string;
     text?: string;
-    components: Array<{
+    example?: {
+        body_text?: string[][];
+        header_text?: string[];
+    };
+    buttons?: Array<{
+        type: string;
+        text: string;
+        phone_number?: string;
+        url?: string;
+    }>;
+}
+
+interface TemplateData {
+    id: string;
+    name: string;
+    status?: string;
+    category?: string;
+    language: string;
+    components: TemplateComponent[];
+    formatted_components?: {
+        header?: TemplateComponent;
+        body?: TemplateComponent;
+        footer?: TemplateComponent;
+        buttons?: Array<{
+            type: string;
+            text: string;
+            phone_number?: string;
+            url?: string;
+        }>;
+    };
+}
+
+interface SendTemplateRequest {
+    // Support both 'to' and 'phone' for backwards compatibility
+    to?: string;
+    phone?: string;
+    language?: string;
+    customer_name?: string;
+    templateName: string;
+    text?: string;
+    // New format with templateData and variables
+    templateData?: TemplateData;
+    variables?: {
+        header: Record<string, string>;
+        body: Record<string, string>;
+        footer: Record<string, string>;
+    };
+    // Legacy format
+    components?: Array<{
         type: 'body';
         parameters: Array<{
             type: 'text';
@@ -139,14 +185,11 @@ async function sendTemplateMessagev2(
     phoneNumberId: string,
     apiVersion: string,
     components: Array<{
-        type: 'body';
-        parameters: Array<{
-            type: 'text';
-            text: string;
-            parameter_name: string;
-        }>;
+        type: string;
+        parameters?: Array<{ type: string; text: string }>;
+        sub_type?: string;
+        index?: string;
     }>
-
 ): Promise<{ messages: { id: string }[] }> {
     try {
         const whatsappApiUrl = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
@@ -207,21 +250,102 @@ export async function POST(request: NextRequest) {
     try {
         let userId = env.PUBLIC_USER_ID;
 
-        // Parse request body
-        const { phone, template, language, customer_name, text, components }: SendTemplateRequest = await request.json();
-        const to = phone;
-        const templateName = template;
-        const templateData = {
-            id: template,
-            name: template,
-            language: language,
-            components: components
-        };
+        console.log('User ID:', userId);
+
+        // Parse request body - support both new and legacy formats
+        const requestBody: SendTemplateRequest = await request.json();
+
+        // Support both 'to' and 'phone' for backwards compatibility
+        const to = requestBody.to || requestBody.phone;
+        const templateName = requestBody.templateName;
+        const customer_name = requestBody.customer_name;
+        const text = requestBody.text;
+
+        // Handle new format with templateData and variables
+        let templateData: TemplateData;
+        let templateLanguage: string;
+        let whatsappComponents: Array<{
+            type: string;
+            parameters?: Array<{ type: string; text: string }>;
+            sub_type?: string;
+            index?: string;
+        }> = [];
+
+        if (requestBody.templateData && requestBody.variables) {
+            // New format: templateData with variables object
+            templateData = requestBody.templateData;
+            templateLanguage = templateData.language;
+
+            const variables = requestBody.variables;
+
+            // Build WhatsApp API components from variables
+            // Add header parameters if header variables exist
+            if (variables.header && Object.keys(variables.header).length > 0) {
+                const headerParams = Object.keys(variables.header)
+                    .sort((a, b) => parseInt(a) - parseInt(b))
+                    .map(key => ({
+                        type: 'text' as const,
+                        text: variables.header[key]
+                    }));
+
+                whatsappComponents.push({
+                    type: 'header',
+                    parameters: headerParams
+                });
+            }
+
+            // Add body parameters if body variables exist
+            if (variables.body && Object.keys(variables.body).length > 0) {
+                const bodyParams = Object.keys(variables.body)
+                    .sort((a, b) => parseInt(a) - parseInt(b))
+                    .map(key => ({
+                        type: 'text' as const,
+                        text: variables.body[key]
+                    }));
+
+                whatsappComponents.push({
+                    type: 'body',
+                    parameters: bodyParams
+                });
+            }
+
+            // Add footer parameters if footer variables exist
+            if (variables.footer && Object.keys(variables.footer).length > 0) {
+                const footerParams = Object.keys(variables.footer)
+                    .sort((a, b) => parseInt(a) - parseInt(b))
+                    .map(key => ({
+                        type: 'text' as const,
+                        text: variables.footer[key]
+                    }));
+
+                whatsappComponents.push({
+                    type: 'footer',
+                    parameters: footerParams
+                });
+            }
+
+            // Note: PHONE_NUMBER buttons don't need additional parameters - they use the phone_number defined in the template
+
+        } else {
+            // Legacy format: components array directly
+            templateData = {
+                id: templateName,
+                name: templateName,
+                language: requestBody.language || 'tr',
+                components: requestBody.components || []
+            };
+            templateLanguage = templateData.language;
+            whatsappComponents = requestBody.components as typeof whatsappComponents || [];
+        }
+
+        console.log('Template data:', templateData);
+        console.log('WhatsApp components:', JSON.stringify(whatsappComponents, null, 2));
+
         // Validate required parameters
-        if (!to || !templateName || !templateData) {
-            console.error('Missing required parameters:', { to: !!to, templateName: !!templateName, templateData: !!templateData });
+        if (!to || !templateName) {
+            console.error('Missing required parameters:', { to: !!to, templateName: !!templateName });
             return NextResponse.json(
-                { error: 'Missing required parameters: to, templateName, templateData' },
+                { error: 'Missing required parameters: to, templateName' },
                 { status: 400 }
             );
         }
@@ -229,7 +353,7 @@ export async function POST(request: NextRequest) {
         const serviceRoleClient = await createServiceRoleClient();
 
         // Get user's WhatsApp API credentials
-            const { data: settings, error: settingsError } = await serviceRoleClient
+        const { data: settings, error: settingsError } = await serviceRoleClient
             .from('user_settings')
             .select('access_token, phone_number_id, api_version, access_token_added')
             .eq('id', userId)
@@ -255,7 +379,7 @@ export async function POST(request: NextRequest) {
 
 
         //check user exists in the users table
-            const { data: userData, error: userError } = await serviceRoleClient
+        const { data: userData, error: userError } = await serviceRoleClient
             .from('users')
             .select('id')
             .eq('id', to)
@@ -306,11 +430,11 @@ export async function POST(request: NextRequest) {
         const messageResponse = await sendTemplateMessagev2(
             to,
             templateName,
-            templateData.language,
+            templateLanguage,
             accessToken,
             phoneNumberId,
             apiVersion,
-            templateData.components
+            whatsappComponents
         );
         const messageId = messageResponse.messages?.[0]?.id;
 

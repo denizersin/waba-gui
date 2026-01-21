@@ -210,26 +210,26 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
               <div className="mb-3">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
-                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Header</span>
+                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">{t('preview_header')}</span>
                 </div>
                 {template.formatted_components.header.format === 'IMAGE' ? (
                   <div className="bg-white bg-opacity-20 rounded-lg p-3 text-center mb-2">
-                    <span className="text-sm">📷 Header Image</span>
+                    <span className="text-sm">📷 {t('header_image')}</span>
                   </div>
                 ) : template.formatted_components.header.format === 'VIDEO' ? (
                   <div className="bg-white bg-opacity-20 rounded-lg p-3 text-center mb-2">
-                    <span className="text-sm">🎥 Header Video</span>
+                    <span className="text-sm">🎥 {t('header_video')}</span>
                   </div>
                 ) : template.formatted_components.header.format === 'DOCUMENT' ? (
                   <div className="bg-white bg-opacity-20 rounded-lg p-3 text-center mb-2">
-                    <span className="text-sm">📄 Header Document</span>
+                    <span className="text-sm">📄 {t('header_document')}</span>
                   </div>
                 ) : template.formatted_components.header.text ? (
                   <p className="font-semibold text-sm mb-2">
                     {replaceVariables(template.formatted_components.header.text, vars.header)}
                   </p>
                 ) : (
-                  <p className="font-semibold text-sm mb-2">[Header Content]</p>
+                  <p className="font-semibold text-sm mb-2">[{t('header_content')}]</p>
                 )}
               </div>
             )}
@@ -240,7 +240,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                 {template.formatted_components.header && (
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
-                    <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Body</span>
+                    <span className="text-xs opacity-75 font-medium uppercase tracking-wide">{t('preview_body')}</span>
                   </div>
                 )}
                 <p className="text-sm leading-relaxed">
@@ -254,7 +254,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
               <div className="mb-3">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
-                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Footer</span>
+                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">{t('preview_footer')}</span>
                 </div>
                 <p className="text-xs opacity-75">
                   {replaceVariables(template.formatted_components.footer.text || '', vars.footer)}
@@ -267,7 +267,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
               <div className="mt-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-2 h-2 rounded-full bg-white opacity-60"></div>
-                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">Buttons</span>
+                  <span className="text-xs opacity-75 font-medium uppercase tracking-wide">{t('preview_buttons')}</span>
                 </div>
                 <div className="space-y-1">
                   {template.formatted_components.buttons.map((button, index) => (
@@ -632,7 +632,7 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
         {selectedTemplate && (
           <div className="flex items-center justify-between p-6 border-t border-border bg-muted/50">
             <div className="text-sm text-muted-foreground">
-              Template: {selectedTemplate.name} • {extractVariables(selectedTemplate).all.length} variables
+              {t('template_details', { name: selectedTemplate.name, count: extractVariables(selectedTemplate).all.length })}
             </div>
             <div className="flex gap-3">
               <Button
