@@ -92,8 +92,10 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit') || '50'; // Default limit
     const fields = searchParams.get('fields') || 'id,name,status,category,language,components,previous_category,rejected_reason,quality_score';
 
+    const WABA_ACCAOUNT_ID = process.env.WABA_ACCAOUNT_ID
+
     // Build WhatsApp Business API URL
-    let apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${'2326673521128898'}/message_templates`;
+    let apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${WABA_ACCAOUNT_ID}/message_templates`;
 
     // Add query parameters
     const params = new URLSearchParams({
