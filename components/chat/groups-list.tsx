@@ -103,7 +103,7 @@ export function GroupsList({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 max-h-[300px] overflow-y-auto">
       {/* Section Header */}
       <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         Broadcast Groups ({groups.length})
