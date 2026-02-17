@@ -201,12 +201,43 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
     ));
   };
 
+  const validatePhoneNumber = (phone: string): { isValid: boolean; error?: string } => {
+    const trimmed = phone.trim();
+
+    // Cannot start with 0
+    if (trimmed.startsWith('0')) {
+      return { isValid: false, error: 'Phone number cannot start with 0' };
+    }
+
+    // Must be at least 10 digits
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    if (digitsOnly.length < 10) {
+      return { isValid: false, error: 'Phone number must be at least 10 digits' };
+    }
+
+    return { isValid: true };
+  };
+
   const handleCreateNewChat = async () => {
     // Filter out empty entries
     const validUsers = newUsers.filter(u => u.phoneNumber.trim());
 
     if (validUsers.length === 0) {
       alert('Please enter at least one phone number');
+      return;
+    }
+
+    // Validate phone numbers
+    const validationErrors: string[] = [];
+    validUsers.forEach((user, index) => {
+      const validation = validatePhoneNumber(user.phoneNumber);
+      if (!validation.isValid) {
+        validationErrors.push(`User ${index + 1}: ${validation.error}`);
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      alert(validationErrors.join('\n'));
       return;
     }
 
