@@ -30,7 +30,8 @@
     "react-i18next": "^16.5.1",
     "tailwind-merge": "^3.3.0",
     "use-debounce": "^10.0.6",
-    "uuidv7": "^1.1.0"
+    "uuidv7": "^1.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
