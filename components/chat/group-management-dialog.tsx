@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "react-i18next";
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ export function GroupManagementDialog({
   group,
   onGroupSaved,
 }: GroupManagementDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -146,7 +148,7 @@ export function GroupManagementDialog({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to parse Excel file');
+        throw new Error(data.error || t('failed_parse_excel'));
       }
 
       setExcelParseResult(data.data);
@@ -159,7 +161,7 @@ export function GroupManagementDialog({
 
     } catch (error) {
       console.error('Error parsing Excel:', error);
-      setError(error instanceof Error ? error.message : 'Failed to parse Excel file');
+      setError(error instanceof Error ? error.message : t('failed_parse_excel'));
     } finally {
       setIsUploadingExcel(false);
       // Reset file input
@@ -181,12 +183,12 @@ export function GroupManagementDialog({
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setError("Group name is required");
+      setError(t('group_name_required'));
       return;
     }
 
     if (selectedUserIds.length === 0) {
-      setError("Please select at least one member");
+      setError(t('select_one_member_error'));
       return;
     }
 
@@ -203,7 +205,7 @@ export function GroupManagementDialog({
         });
 
         if (!updateResponse.ok) {
-          throw new Error('Failed to update group');
+          throw new Error(t('failed_update_group'));
         }
 
         // Get current members
@@ -243,7 +245,7 @@ export function GroupManagementDialog({
         });
 
         if (!response.ok) {
-          throw new Error('Failed to create group');
+          throw new Error(t('failed_create_group'));
         }
       }
 
@@ -251,7 +253,7 @@ export function GroupManagementDialog({
       onClose();
     } catch (error) {
       console.error('Error saving group:', error);
-      setError(error instanceof Error ? error.message : 'Failed to save group');
+      setError(error instanceof Error ? error.message : t('failed_save_group'));
     } finally {
       setSaving(false);
     }
@@ -271,7 +273,7 @@ export function GroupManagementDialog({
           <div className="flex items-center gap-3">
             <Users className="h-6 w-6 text-green-600" />
             <h2 className="text-2xl font-bold">
-              {group ? 'Edit Group' : 'Create New Group'}
+              {group ? t('edit_group') : t('create_new_group')}
             </h2>
           </div>
           <button
@@ -293,10 +295,10 @@ export function GroupManagementDialog({
 
           {/* Group Name */}
           <div className="space-y-2">
-            <Label htmlFor="group-name">Group Name *</Label>
+            <Label htmlFor="group-name">{t('group_name_label')}</Label>
             <Input
               id="group-name"
-              placeholder="e.g., VIP Customers, Weekly Newsletter"
+              placeholder={t('group_name_placeholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full"
@@ -305,10 +307,10 @@ export function GroupManagementDialog({
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="group-description">Description (Optional)</Label>
+            <Label htmlFor="group-description">{t('description_optional')}</Label>
             <Textarea
               id="group-description"
-              placeholder="Brief description of this group..."
+              placeholder={t('description_placeholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -319,7 +321,7 @@ export function GroupManagementDialog({
           {/* Members Selection */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Select Members * ({selectedUserIds.length} selected)</Label>
+              <Label>{t('select_members_label', { count: selectedUserIds.length })}</Label>
               {!group && (
                 <Button
                   type="button"
@@ -329,7 +331,7 @@ export function GroupManagementDialog({
                   className="gap-2"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
-                  {showExcelImport ? 'Hide Excel Import' : 'Import from Excel'}
+                  {showExcelImport ? t('hide_excel_import') : t('import_from_excel')}
                 </Button>
               )}
             </div>
@@ -344,20 +346,20 @@ export function GroupManagementDialog({
                         <FileSpreadsheet className="h-6 w-6 text-green-600 dark:text-green-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold">Import Members from Excel</h3>
+                        <h3 className="font-semibold">{t('import_members_excel_title')}</h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Upload an Excel (.xlsx, .xls) or CSV file containing phone numbers
+                          {t('import_members_excel_desc')}
                         </p>
                       </div>
                     </div>
 
                     <div className="space-y-2 text-sm text-muted-foreground">
-                      <p className="font-medium text-foreground">File format requirements:</p>
+                      <p className="font-medium text-foreground">{t('file_format_requirements')}</p>
                       <ul className="list-disc list-inside space-y-1 ml-2">
-                        <li>Column named "phone", "mobile", "number", or "whatsapp"</li>
-                        <li>Optional column for names: "name" or "fullname"</li>
-                        <li>Phone numbers must have at least 10 digits</li>
-                        <li>Phone numbers cannot start with 0</li>
+                        <li>{t('req_col_phone_or_whatsapp')}</li>
+                        <li>{t('req_col_name')}</li>
+                        <li>{t('req_phone_digits')}</li>
+                        <li>{t('req_phone_no_zero')}</li>
                       </ul>
                     </div>
 
@@ -379,12 +381,12 @@ export function GroupManagementDialog({
                         {isUploadingExcel ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Parsing...
+                            {t('parsing')}
                           </>
                         ) : (
                           <>
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Excel File
+                            {t('upload_excel_file')}
                           </>
                         )}
                       </Button>
@@ -393,7 +395,7 @@ export function GroupManagementDialog({
                 ) : (
                   <>
                     <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">Import Results</h3>
+                      <h3 className="font-semibold">{t('import_results')}</h3>
                       <Button
                         type="button"
                         variant="ghost"
@@ -409,26 +411,26 @@ export function GroupManagementDialog({
                         <div className="text-xl font-bold text-foreground">
                           {excelParseResult.total}
                         </div>
-                        <div className="text-xs text-muted-foreground">Valid</div>
+                        <div className="text-xs text-muted-foreground">{t('valid')}</div>
                       </div>
                       <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-2 border border-blue-200 dark:border-blue-900">
                         <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
                           {excelParseResult.existing}
                         </div>
-                        <div className="text-xs text-muted-foreground">Existing</div>
+                        <div className="text-xs text-muted-foreground">{t('existing')}</div>
                       </div>
                       <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-2 border border-green-200 dark:border-green-900">
                         <div className="text-xl font-bold text-green-600 dark:text-green-400">
                           {excelParseResult.new}
                         </div>
-                        <div className="text-xs text-muted-foreground">New</div>
+                        <div className="text-xs text-muted-foreground">{t('new')}</div>
                       </div>
                       {excelParseResult.invalid > 0 && (
                         <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-2 border border-red-200 dark:border-red-900">
                           <div className="text-xl font-bold text-red-600 dark:text-red-400">
                             {excelParseResult.invalid}
                           </div>
-                          <div className="text-xs text-muted-foreground">Invalid</div>
+                          <div className="text-xs text-muted-foreground">{t('invalid')}</div>
                         </div>
                       )}
                     </div>
@@ -438,7 +440,7 @@ export function GroupManagementDialog({
                       <div className="flex items-center gap-2">
                         <CheckCircle className="h-4 w-4 text-green-600" />
                         <span className="text-sm font-medium">
-                          {excelParseResult.total} users will be added ({excelParseResult.existing} existing, {excelParseResult.new} new)
+                          {t('users_added_summary', { total: excelParseResult.total, existing: excelParseResult.existing, new: excelParseResult.new })}
                         </span>
                       </div>
                       <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
@@ -464,7 +466,7 @@ export function GroupManagementDialog({
                         <div className="flex items-center gap-2">
                           <AlertCircle className="h-4 w-4 text-red-600" />
                           <span className="text-sm font-medium text-red-600">
-                            {excelParseResult.invalid} invalid number(s) skipped
+                            {t('invalid_numbers_skipped', { count: excelParseResult.invalid })}
                           </span>
                         </div>
                         <div className="max-h-32 overflow-y-auto border border-red-200 dark:border-red-900 rounded-lg divide-y">
@@ -485,14 +487,14 @@ export function GroupManagementDialog({
                         onClick={handleCancelExcelImport}
                         className="flex-1"
                       >
-                        Cancel
+                        {t('cancel')}
                       </Button>
                       <Button
                         type="button"
                         onClick={handleConfirmExcelImport}
                         className="flex-1 bg-green-600 hover:bg-green-700"
                       >
-                        Add {excelParseResult.total} Members
+                        {t('add_members_btn', { count: excelParseResult.total })}
                       </Button>
                     </div>
                   </>
@@ -504,7 +506,7 @@ export function GroupManagementDialog({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search users..."
+                placeholder={t('search_users_placeholder')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -515,7 +517,7 @@ export function GroupManagementDialog({
             <div className="border border-border rounded-lg max-h-64 overflow-y-auto">
               {filteredUsers.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
-                  No users found
+                  {t('no_users_found')}
                 </div>
               ) : (
                 <div className="divide-y divide-border">
@@ -547,7 +549,7 @@ export function GroupManagementDialog({
             onClick={onClose}
             disabled={isSaving}
           >
-            Cancel
+            {t('cancel')}
           </Button>
           <Button
             onClick={handleSave}
@@ -557,12 +559,12 @@ export function GroupManagementDialog({
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t('saving')}
               </>
             ) : (
               <>
                 <Save className="mr-2 h-4 w-4" />
-                {group ? 'Update Group' : 'Create Group'}
+                {group ? t('update_group') : t('create_group')}
               </>
             )}
           </Button>
