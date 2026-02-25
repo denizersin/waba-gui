@@ -71,10 +71,10 @@ export async function POST(request: NextRequest) {
     // Find phone column (look for common phone column names)
     const phoneColumn = headers.findIndex(h =>
       h && (h.toLowerCase().includes('phone') ||
-            h.toLowerCase().includes('mobile') ||
-            h.toLowerCase().includes('number') ||
-            h.toLowerCase().includes('whatsapp') ||
-            h.toLowerCase().includes('tel'))
+        h.toLowerCase().includes('mobile') ||
+        h.toLowerCase().includes('number') ||
+        h.toLowerCase().includes('whatsapp') ||
+        h.toLowerCase().includes('tel'))
     );
 
     if (phoneColumn === -1) {
@@ -112,8 +112,8 @@ export async function POST(request: NextRequest) {
           // Try to find name column
           const nameColumn = headers.findIndex(h =>
             h && (h.toLowerCase().includes('name') ||
-                  h.toLowerCase().includes('nom') ||
-                  h.toLowerCase().includes('fullname'))
+              h.toLowerCase().includes('nom') ||
+              h.toLowerCase().includes('fullname'))
           );
           names.push(nameColumn !== -1 ? (row[nameColumn]?.toString().trim() || '') : '');
         } else {
@@ -192,8 +192,8 @@ export async function POST(request: NextRequest) {
         for (const [userId, userData] of userMap.entries()) {
           const cleanedUserId = userId.replace(/\D/g, '');
           if (cleanedUserId === cleanedPhone ||
-              cleanedUserId.endsWith(cleanedPhone) ||
-              cleanedPhone.endsWith(cleanedUserId)) {
+            cleanedUserId.endsWith(cleanedPhone) ||
+            cleanedPhone.endsWith(cleanedUserId)) {
             matchedUser = { id: userId, ...userData };
             break;
           }
@@ -225,9 +225,19 @@ export async function POST(request: NextRequest) {
 
     // Create new users if any
     if (newUsersToInsert.length > 0) {
+      // Ensure newUsersToInsert is unique by cleaned phone number
+      const uniqueUsersMap = new Map<string, { id: string; name: string }>();
+      newUsersToInsert.forEach(user => {
+        const cleanedPhone = user.id.replace(/\D/g, '');
+        if (!uniqueUsersMap.has(cleanedPhone)) {
+          uniqueUsersMap.set(cleanedPhone, user);
+        }
+      });
+      const uniqueNewUsersToInsert = Array.from(uniqueUsersMap.values());
+
       const { error: insertError } = await supabase
         .from('users')
-        .insert(newUsersToInsert);
+        .upsert(uniqueNewUsersToInsert, { onConflict: 'id', ignoreDuplicates: true });
 
       if (insertError) {
         console.error('Error creating new users:', insertError);
