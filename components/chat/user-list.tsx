@@ -679,6 +679,7 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
             onDeleteGroup={handleDeleteGroup}
             onSelectMember={handleSelectMemberFromGroup}
             onBroadcastToGroup={handleBroadcastToGroup}
+            onGroupUpdated={loadGroups}
           />
         </div>
       )}

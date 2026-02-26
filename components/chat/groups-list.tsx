@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, Edit, Trash2, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, ChevronRight, MessageCircle, UserMinus } from "lucide-react";
 
 interface Group {
   group_id: string;
@@ -27,6 +27,7 @@ interface GroupsListProps {
   onDeleteGroup: (groupId: string) => void;
   onSelectMember: (userId: string) => void;
   onBroadcastToGroup: (groupId: string) => void;
+  onGroupUpdated?: () => void;
 }
 
 export function GroupsList({
@@ -35,6 +36,7 @@ export function GroupsList({
   onDeleteGroup,
   onSelectMember,
   onBroadcastToGroup,
+  onGroupUpdated,
 }: GroupsListProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [groupMembers, setGroupMembers] = useState<Record<string, GroupMember[]>>({});
@@ -141,10 +143,12 @@ export function GroupsList({
                 {/* Group Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold truncate">{group.group_name}</h3>
-                    <Badge variant="secondary" className="text-xs">
-                      {group.member_count}
-                    </Badge>
+                    <h3 className="font-medium text-sm truncate">{group.group_name}</h3>
+                    {group.member_count > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {group.member_count} members
+                      </Badge>
+                    )}
                     {totalUnread > 0 && (
                       <Badge className="bg-red-500 text-white text-xs">
                         {totalUnread}
@@ -214,20 +218,60 @@ export function GroupsList({
                 ) : (
                   <div className="divide-y divide-border/50">
                     {members.map(member => (
-                      <button
+                      <div
                         key={member.member_id}
-                        onClick={() => onSelectMember(member.user_id)}
-                        className="w-full px-12 py-2 text-left hover:bg-muted/50 transition-colors flex items-center justify-between"
+                        className="w-full flex items-center justify-between px-12 py-2 hover:bg-muted/50 transition-colors group/member"
                       >
-                        <span className="text-sm">
-                          {member.custom_name || member.whatsapp_name || member.user_id}
-                        </span>
-                        {member.unread_count > 0 && (
-                          <Badge className="bg-red-500 text-white text-xs">
-                            {member.unread_count}
-                          </Badge>
-                        )}
-                      </button>
+                        <button
+                          onClick={() => onSelectMember(member.user_id)}
+                          className="flex-1 text-left flex items-center justify-between pr-4"
+                        >
+                          <span className="text-sm">
+                            {member.custom_name || member.whatsapp_name || member.user_id}
+                          </span>
+                          {member.unread_count > 0 && (
+                            <Badge className="bg-red-500 text-white text-xs">
+                              {member.unread_count}
+                            </Badge>
+                          )}
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover/member:opacity-100 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Are you sure you want to remove this member from the group?`)) {
+                              try {
+                                const response = await fetch(`/api/groups/${group.group_id}/members?userId=${member.user_id}`, {
+                                  method: 'DELETE',
+                                });
+                                if (response.ok) {
+                                  // Update local state temporarily so UI reflects change fast
+                                  setGroupMembers(prev => ({
+                                    ...prev,
+                                    [group.group_id]: prev[group.group_id].filter(m => m.user_id !== member.user_id)
+                                  }));
+                                  // Optionally refresh GroupsList entirely via parent
+                                  if (onGroupUpdated) {
+                                    onGroupUpdated();
+                                  }
+                                } else {
+                                  const data = await response.json();
+                                  alert(`Failed to remove member: ${data.error || 'Unknown error'}`);
+                                }
+                              } catch (error) {
+                                console.error('Error removing member:', error);
+                                alert('Error removing member from group');
+                              }
+                            }
+                          }}
+                          title="Remove member"
+                        >
+                          <UserMinus className="h-3 w-3" />
+                          <span className="sr-only">Remove {member.custom_name || member.whatsapp_name || member.user_id}</span>
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -239,4 +283,3 @@ export function GroupsList({
     </div>
   );
 }
-
