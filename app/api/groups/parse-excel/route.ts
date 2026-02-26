@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
           if (cleanedUserId === cleanedPhone ||
             cleanedUserId.endsWith(cleanedPhone) ||
             cleanedPhone.endsWith(cleanedUserId)) {
-            matchedUser = { id: userId, ...userData };
+            matchedUser = { ...userData };
             break;
           }
         }
