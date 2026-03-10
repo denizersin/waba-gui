@@ -107,10 +107,46 @@ export async function POST(
     // Send message to each member individually
     for (const member of members) {
       try {
-        const cleanPhoneNumber = member.user_id.replace(/\s+/g, '').replace(/[^\d]/g, '');
+        let cleanPhoneNumber = member.user_id.replace(/\s+/g, '').replace(/[^\d]/g, '');
+        // Remove leading 0 if it exists
+        if (cleanPhoneNumber.startsWith('0')) {
+          cleanPhoneNumber = cleanPhoneNumber.substring(1);
+        }
         let whatsappResponse;
         let messageContent = message;
         let messageMediaData = null;
+
+        // 1. Check User Existence (Recipient) for both Template and Text flows
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', cleanPhoneNumber)
+          .maybeSingle();
+
+        if (userError) {
+          console.error(`Error checking user ${cleanPhoneNumber}:`, userError);
+          results.failed++;
+          results.errors.push(`${member.user_id}: Database check failed`);
+          continue; // Skip this user
+        }
+
+        if (!userData) {
+          console.log(`User does not exist, inserting before broadcast: ${cleanPhoneNumber}`);
+          const { error: userInsertError } = await supabase
+            .from('users')
+            .insert([{
+              id: cleanPhoneNumber,
+              name: cleanPhoneNumber,
+              last_active: timestamp
+            }]);
+
+          if (userInsertError) {
+            console.error(`Error inserting user ${cleanPhoneNumber}:`, userInsertError);
+            results.failed++;
+            results.errors.push(`${member.user_id}: Database insert failed`);
+            continue;
+          }
+        }
 
         if (templateName && templateData) {
           // --- TEMPLATE FLOW (EXISTING LOGIC) ---
@@ -285,38 +321,6 @@ export async function POST(
         } else {
           // --- TEXT FLOW (NEW LOGIC MATCHING send-message/route.ts) ---
 
-          // 1. Check User Existence (Recipient)
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', cleanPhoneNumber)
-            .maybeSingle();
-
-          if (userError) {
-            console.error(`Error checking user ${cleanPhoneNumber}:`, userError);
-            results.failed++;
-            results.errors.push(`${member.user_id}: Database check failed`);
-            continue; // Skip this user
-          }
-
-          if (!userData) {
-            console.log(`User does not exist, inserting: ${cleanPhoneNumber}`);
-            const { error: userInsertError } = await supabase
-              .from('users')
-              .insert([{
-                id: cleanPhoneNumber,
-                name: cleanPhoneNumber,
-                last_active: new Date().toISOString()
-              }]);
-
-            if (userInsertError) {
-              console.error(`Error inserting user ${cleanPhoneNumber}:`, userInsertError);
-              results.failed++;
-              results.errors.push(`${member.user_id}: Database insert failed`);
-              continue;
-            }
-          }
-
           // 2. Send Text Message via WhatsApp API
           const textMessage = {
             messaging_product: 'whatsapp',
@@ -359,11 +363,9 @@ export async function POST(
 
             // Update Users Last Active
             // Recipient
-            await supabase.from('users').upsert([{
-              id: cleanPhoneNumber,
-              name: cleanPhoneNumber,
-              last_active: timestamp
-            }], { onConflict: 'id' });
+            await supabase.from('users')
+              .update({ last_active: timestamp })
+              .eq('id', cleanPhoneNumber);
 
             // Sender (User) - Optional but good practice as in send-message
             // (Assuming User ID is in Users table, send-message doesn't explicitly upsert User UUID except via cleanPhoneNumber check if sender was a phone number? 
