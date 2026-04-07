@@ -89,36 +89,58 @@ export async function POST(request: NextRequest) {
     const names: string[] = [];
     const invalidNumbers: InvalidNumber[] = [];
 
-    // Validate phone number function
-    const validatePhoneNumber = (phone: string): { valid: boolean; reason?: string } => {
-      const cleaned = phone.replace(/\D/g, ''); // Remove non-digits
-      // Must not be empty, must have at least 10 digits, must not start with 0
-      if (cleaned.length < 10) {
-        return { valid: false, reason: 'Less than 10 digits' };
+    // Normalize and validate phone number
+    // Rules:
+    //   1. Remove all spaces and non-digit characters
+    //   2. If starts with 0  → prepend '9'  (0XXXXXXXXXX  → 90XXXXXXXXXX)
+    //   3. If starts with 5  → prepend '90' (5XXXXXXXXXX  → 905XXXXXXXXXX)
+    //   4. Final number must be exactly 12 digits and start with '905'
+    const normalizePhone = (raw: string): { normalized: string | null; reason?: string } => {
+      // Step 1: remove spaces, then strip any remaining non-digit chars
+      let digits = raw.replace(/\s+/g, '').replace(/\D/g, '');
+
+      if (!digits) {
+        return { normalized: null, reason: 'Empty after cleaning' };
       }
-      if (cleaned.startsWith('0')) {
-        return { valid: false, reason: 'Starts with 0' };
+
+      // Step 2 & 3: fix prefix
+      if (digits.startsWith('0')) {
+        digits = '9' + digits; // 0XXXXXXXXXX → 90XXXXXXXXXX
+      } else if (digits.startsWith('5')) {
+        digits = '90' + digits; // 5XXXXXXXXXX → 905XXXXXXXXXX
       }
-      return { valid: true };
+
+      // Step 4: must be exactly 12 digits
+      if (digits.length !== 12) {
+        return { normalized: null, reason: `Expected 12 digits, got ${digits.length}` };
+      }
+
+      // Must start with 905
+      if (!digits.startsWith('905')) {
+        return { normalized: null, reason: `Must start with 905, got ${digits.slice(0, 3)}` };
+      }
+
+      return { normalized: digits };
     };
+
+    // Find name column once (outside the loop)
+    const nameColumn = headers.findIndex(h =>
+      h && (h.toLowerCase().includes('name') ||
+        h.toLowerCase().includes('nom') ||
+        h.toLowerCase().includes('fullname'))
+    );
 
     for (let i = 1; i < rawData.length; i++) {
       const row = rawData[i] as any[];
-      const phone = row[phoneColumn]?.toString().trim();
-      if (phone) {
-        const validation = validatePhoneNumber(phone);
-        if (validation.valid) {
-          phoneNumbers.push(phone);
-          // Try to find name column
-          const nameColumn = headers.findIndex(h =>
-            h && (h.toLowerCase().includes('name') ||
-              h.toLowerCase().includes('nom') ||
-              h.toLowerCase().includes('fullname'))
-          );
-          names.push(nameColumn !== -1 ? (row[nameColumn]?.toString().trim() || '') : '');
-        } else {
-          invalidNumbers.push({ phone, reason: validation.reason || 'Invalid' });
-        }
+      const rawPhone = row[phoneColumn]?.toString() ?? '';
+      if (!rawPhone.trim()) continue;
+
+      const { normalized, reason } = normalizePhone(rawPhone);
+      if (normalized) {
+        phoneNumbers.push(normalized);
+        names.push(nameColumn !== -1 ? (row[nameColumn]?.toString().trim() || '') : '');
+      } else {
+        invalidNumbers.push({ phone: rawPhone.trim(), reason: reason || 'Invalid' });
       }
     }
 

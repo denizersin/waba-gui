@@ -201,39 +201,53 @@ export function UserList({ users, selectedUser, onUserSelect, currentUserId, onU
     ));
   };
 
-  const validatePhoneNumber = (phone: string): { isValid: boolean; error?: string } => {
-    const trimmed = phone.trim();
+  // Normalizes and validates a phone number using the same rules as the API:
+  //   1. Remove spaces and non-digit characters
+  //   2. If starts with 0  → prepend '9'  (e.g. 0545... → 90545...)
+  //   3. If starts with 5  → prepend '90' (e.g. 545...  → 90545...)
+  //   4. Result must be exactly 12 digits and start with '905'
+  const normalizePhone = (raw: string): { normalized: string | null; error?: string } => {
+    let digits = raw.replace(/\s+/g, '').replace(/\D/g, '');
 
-    // Cannot start with 0
-    if (trimmed.startsWith('0')) {
-      return { isValid: false, error: 'Phone number cannot start with 0' };
+    if (!digits) {
+      return { normalized: null, error: 'Phone number is empty' };
     }
 
-    // Must be at least 10 digits
-    const digitsOnly = trimmed.replace(/\D/g, '');
-    if (digitsOnly.length < 10) {
-      return { isValid: false, error: 'Phone number must be at least 10 digits' };
+    if (digits.startsWith('0')) {
+      digits = '9' + digits;
+    } else if (digits.startsWith('5')) {
+      digits = '90' + digits;
     }
 
-    return { isValid: true };
+    if (digits.length !== 12) {
+      return { normalized: null, error: `Must be 12 digits after formatting (got ${digits.length})` };
+    }
+
+    if (!digits.startsWith('905')) {
+      return { normalized: null, error: `Must start with 905 (got ${digits.slice(0, 3)})` };
+    }
+
+    return { normalized: digits };
   };
 
   const handleCreateNewChat = async () => {
     // Filter out empty entries
-    const validUsers = newUsers.filter(u => u.phoneNumber.trim());
+    const rawValidUsers = newUsers.filter(u => u.phoneNumber.trim());
 
-    if (validUsers.length === 0) {
+    if (rawValidUsers.length === 0) {
       alert('Please enter at least one phone number');
       return;
     }
 
-    // Validate phone numbers
+    // Normalize and validate phone numbers
     const validationErrors: string[] = [];
-    validUsers.forEach((user, index) => {
-      const validation = validatePhoneNumber(user.phoneNumber);
-      if (!validation.isValid) {
-        validationErrors.push(`User ${index + 1}: ${validation.error}`);
+    const validUsers = rawValidUsers.map((user, index) => {
+      const { normalized, error } = normalizePhone(user.phoneNumber);
+      if (!normalized) {
+        validationErrors.push(`User ${index + 1}: ${error}`);
+        return user;
       }
+      return { ...user, phoneNumber: normalized };
     });
 
     if (validationErrors.length > 0) {
