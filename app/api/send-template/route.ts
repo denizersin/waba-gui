@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { env } from 'process';
+import { uploadFileToS3 } from '@/lib/aws-s3';
+
+export const runtime = 'nodejs';
 
 interface TemplateComponent {
     type: string;
@@ -63,6 +66,45 @@ interface SendTemplateRequest {
         }>;
     }>;
 }
+/**
+ * Upload an image file to WhatsApp Media API and return the media ID
+ */
+async function uploadImageToWhatsApp(
+    file: File,
+    accessToken: string,
+    phoneNumberId: string,
+    apiVersion: string
+): Promise<string | null> {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', file.type);
+        formData.append('messaging_product', 'whatsapp');
+
+        const uploadResponse = await fetch(
+            `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/media`,
+            {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+                body: formData,
+            }
+        );
+
+        if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text();
+            console.error('WhatsApp media upload failed:', errorText);
+            return null;
+        }
+
+        const result = await uploadResponse.json();
+        console.log('Header image uploaded to WhatsApp, media ID:', result.id);
+        return result.id as string;
+    } catch (error) {
+        console.error('Error uploading image to WhatsApp:', error);
+        return null;
+    }
+}
+
 /**
  * Send template message via WhatsApp Cloud API using user-specific credentials
  */
@@ -186,7 +228,7 @@ async function sendTemplateMessagev2(
     apiVersion: string,
     components: Array<{
         type: string;
-        parameters?: Array<{ type: string; text: string }>;
+        parameters?: Array<Record<string, unknown>>;
         sub_type?: string;
         index?: string;
     }>
@@ -248,102 +290,53 @@ async function sendTemplateMessagev2(
 export async function POST(request: NextRequest) {
     console.log('send-template API called');
     try {
-        let userId = env.PUBLIC_USER_ID;
-
+        const userId = env.PUBLIC_USER_ID;
         console.log('User ID:', userId);
 
-        // Parse request body - support both new and legacy formats
-        const requestBody: SendTemplateRequest = await request.json();
+        // ── 1. Parse request: supports both multipart/form-data (with image) and JSON ──
+        let to: string | undefined;
+        let templateName: string | undefined;
+        let customer_name: string | undefined;
+        let text: string | undefined;
+        let headerImageFile: File | null = null;
+        let requestBody: SendTemplateRequest;
 
-        console.log('Request body:', JSON.stringify(requestBody, null, 2));
+        const contentType = request.headers.get('content-type') || '';
 
-        // Support both 'to' and 'phone' for backwards compatibility
-        const to = requestBody.to || requestBody.phone;
-        const templateName = requestBody.templateName;
-        const customer_name = requestBody.customer_name;
-        const text = requestBody.text;
+        if (contentType.includes('multipart/form-data')) {
+            const formData = await request.formData();
+            to = (formData.get('to') as string) || undefined;
+            templateName = (formData.get('templateName') as string) || undefined;
+            customer_name = (formData.get('customer_name') as string) || undefined;
+            text = (formData.get('text') as string) || undefined;
 
-        // Handle new format with templateData and variables
-        let templateData: TemplateData;
-        let templateLanguage: string;
-        let whatsappComponents: Array<{
-            type: string;
-            parameters?: Array<{ type: string; text: string }>;
-            sub_type?: string;
-            index?: string;
-        }> = [];
+            const templateDataRaw = formData.get('templateData') as string | null;
+            const variablesRaw = formData.get('variables') as string | null;
 
-        if (requestBody.templateData && requestBody.variables) {
-            // New format: templateData with variables object
-            templateData = requestBody.templateData;
-            templateLanguage = templateData.language;
-
-            const variables = requestBody.variables;
-
-            // Build WhatsApp API components from variables
-            // Add header parameters if header variables exist
-            if (variables.header && Object.keys(variables.header).length > 0) {
-                const headerParams = Object.keys(variables.header)
-                    .sort((a, b) => parseInt(a) - parseInt(b))
-                    .map(key => ({
-                        type: 'text' as const,
-                        text: variables.header[key]
-                    }));
-
-                whatsappComponents.push({
-                    type: 'header',
-                    parameters: headerParams
-                });
-            }
-
-            // Add body parameters if body variables exist
-            if (variables.body && Object.keys(variables.body).length > 0) {
-                const bodyParams = Object.keys(variables.body)
-                    .sort((a, b) => parseInt(a) - parseInt(b))
-                    .map(key => ({
-                        type: 'text' as const,
-                        text: variables.body[key]
-                    }));
-
-                whatsappComponents.push({
-                    type: 'body',
-                    parameters: bodyParams
-                });
-            }
-
-            // Add footer parameters if footer variables exist
-            if (variables.footer && Object.keys(variables.footer).length > 0) {
-                const footerParams = Object.keys(variables.footer)
-                    .sort((a, b) => parseInt(a) - parseInt(b))
-                    .map(key => ({
-                        type: 'text' as const,
-                        text: variables.footer[key]
-                    }));
-
-                whatsappComponents.push({
-                    type: 'footer',
-                    parameters: footerParams
-                });
-            }
-
-            // Note: PHONE_NUMBER buttons don't need additional parameters - they use the phone_number defined in the template
-
-        } else {
-            // Legacy format: components array directly
-            templateData = {
-                id: templateName,
-                name: templateName,
-                language: requestBody.language || 'tr',
-                components: requestBody.components || []
+            requestBody = {
+                to,
+                templateName: templateName || '',
+                customer_name,
+                text,
+                templateData: templateDataRaw ? JSON.parse(templateDataRaw) : undefined,
+                variables: variablesRaw ? JSON.parse(variablesRaw) : undefined,
             };
-            templateLanguage = templateData.language;
-            whatsappComponents = requestBody.components as typeof whatsappComponents || [];
+
+            const imageEntry = formData.get('headerImage');
+            if (imageEntry instanceof File && imageEntry.size > 0) {
+                headerImageFile = imageEntry;
+            }
+        } else {
+            requestBody = (await request.json()) as SendTemplateRequest;
+            to = requestBody.to || requestBody.phone;
+            templateName = requestBody.templateName;
+            customer_name = requestBody.customer_name;
+            text = requestBody.text;
         }
 
-        console.log('Template data:', templateData);
-        console.log('WhatsApp components:', JSON.stringify(whatsappComponents, null, 2));
+        console.log('Request body received, templateName:', templateName, 'to:', to);
 
-        // Validate required parameters
+        // ── 2. Validate required parameters ──
         if (!to || !templateName) {
             console.error('Missing required parameters:', { to: !!to, templateName: !!templateName });
             return NextResponse.json(
@@ -352,9 +345,9 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // ── 3. Fetch WhatsApp credentials ──
         const serviceRoleClient = await createServiceRoleClient();
 
-        // Get user's WhatsApp API credentials
         const { data: settings, error: settingsError } = await serviceRoleClient
             .from('user_settings')
             .select('access_token, phone_number_id, api_version, access_token_added')
@@ -377,19 +370,107 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const accessToken = settings.access_token as string;
+        const phoneNumberId = settings.phone_number_id as string;
+        const apiVersion = (settings.api_version as string) || 'v23.0';
 
+        // ── 4. Build WhatsApp template components ──
+        let templateData: TemplateData;
+        let templateLanguage: string;
+        const whatsappComponents: Array<{
+            type: string;
+            parameters?: Array<Record<string, unknown>>;
+            sub_type?: string;
+            index?: string;
+        }> = [];
 
+        if (requestBody.templateData && requestBody.variables) {
+            templateData = requestBody.templateData;
+            templateLanguage = templateData.language;
+            const variables = requestBody.variables;
 
-        //check user exists in the users table
+            // IMAGE header: upload image to WhatsApp first, then add component
+            if (headerImageFile) {
+                const mediaId = await uploadImageToWhatsApp(
+                    headerImageFile,
+                    accessToken,
+                    phoneNumberId,
+                    apiVersion
+                );
+
+                if (!mediaId) {
+                    return NextResponse.json(
+                        { error: 'Failed to upload header image to WhatsApp' },
+                        { status: 500 }
+                    );
+                }
+
+                // Per Meta docs: header component with image parameter
+                whatsappComponents.push({
+                    type: 'header',
+                    parameters: [{ type: 'image', image: { id: mediaId } }],
+                });
+
+                // Best-effort S3 backup of the header image
+                try {
+                    const s3MediaId = `template_header_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    await uploadFileToS3(headerImageFile, userId || 'system', s3MediaId);
+                    console.log('Header image also uploaded to S3');
+                } catch (s3Error) {
+                    console.warn('S3 upload for header image failed (non-fatal):', s3Error);
+                }
+            }
+
+            // TEXT header variables (only if IMAGE header not already added)
+            if (variables.header && Object.keys(variables.header).length > 0) {
+                if (!whatsappComponents.some(c => c.type === 'header')) {
+                    const headerParams = Object.keys(variables.header)
+                        .sort((a, b) => parseInt(a) - parseInt(b))
+                        .map(key => ({ type: 'text', text: variables.header[key] }));
+                    whatsappComponents.push({ type: 'header', parameters: headerParams });
+                }
+            }
+
+            // Body variables
+            if (variables.body && Object.keys(variables.body).length > 0) {
+                const bodyParams = Object.keys(variables.body)
+                    .sort((a, b) => parseInt(a) - parseInt(b))
+                    .map(key => ({ type: 'text', text: variables.body[key] }));
+                whatsappComponents.push({ type: 'body', parameters: bodyParams });
+            }
+
+            // Footer variables
+            if (variables.footer && Object.keys(variables.footer).length > 0) {
+                const footerParams = Object.keys(variables.footer)
+                    .sort((a, b) => parseInt(a) - parseInt(b))
+                    .map(key => ({ type: 'text', text: variables.footer[key] }));
+                whatsappComponents.push({ type: 'footer', parameters: footerParams });
+            }
+
+        } else {
+            // Legacy format
+            templateData = {
+                id: templateName,
+                name: templateName,
+                language: requestBody.language || 'tr',
+                components: requestBody.components || [],
+            };
+            templateLanguage = templateData.language;
+            const legacyComponents = requestBody.components as typeof whatsappComponents || [];
+            whatsappComponents.push(...legacyComponents);
+        }
+
+        console.log('WhatsApp components:', JSON.stringify(whatsappComponents, null, 2));
+
+        // ── 5. Ensure customer exists in DB ──
         const { data: userData, error: userError } = await serviceRoleClient
             .from('users')
             .select('id')
             .eq('id', to)
             .maybeSingle();
 
-
         if (userError) {
-            console.error('Error checking user exists in the users table:', userError);
+            console.error('Error checking user exists:', userError);
             return NextResponse.json(
                 { error: 'Error checking user exists in the users table' },
                 { status: 500 }
@@ -397,38 +478,25 @@ export async function POST(request: NextRequest) {
         }
 
         if (!userData) {
-            console.log('User does not exist in the users table, inserting user:', to);
+            console.log('Inserting new user:', to);
             const { error: userInsertError } = await serviceRoleClient
                 .from('users')
                 .insert([{
                     id: to,
                     name: customer_name || to,
-                    last_active: new Date().toISOString()
+                    last_active: new Date().toISOString(),
                 }]);
             if (userInsertError) {
-                console.error('Error inserting user into the users table:', userInsertError);
+                console.error('Error inserting user:', userInsertError);
                 return NextResponse.json(
                     { error: 'Error inserting user into the users table' },
                     { status: 500 }
                 );
-            } else {
-                console.log('User inserted into the users table:', to);
             }
-
         }
 
-
-
-
-
-
-        const accessToken = settings.access_token;
-        const phoneNumberId = settings.phone_number_id;
-        const apiVersion = settings.api_version || 'v23.0';
-
+        // ── 6. Send the template via WhatsApp ──
         console.log(`Sending template message: ${templateName} to ${to}`);
-
-        // Send template message via WhatsApp using user-specific credentials
         const messageResponse = await sendTemplateMessagev2(
             to,
             templateName,
@@ -444,20 +512,13 @@ export async function POST(request: NextRequest) {
             throw new Error('No message ID returned from WhatsApp API');
         }
 
-        // Generate content for display in chat
-
+        // ── 7. Build display text ──
         let finalText = text;
-
-        // If text is not provided, generate it from template body
         if (!finalText && templateData) {
-            // Find body component from templateData
             const bodyComponent = templateData.formatted_components?.body ||
                 templateData.components?.find(c => c.type === 'BODY' || c.type === 'body');
-
             if (bodyComponent?.text) {
                 finalText = bodyComponent.text;
-
-                // Replace placeholders {{1}}, {{2}}, etc. with actual variable values
                 if (requestBody.variables?.body) {
                     const bodyVars = requestBody.variables.body;
                     Object.keys(bodyVars).forEach(key => {
@@ -466,47 +527,18 @@ export async function POST(request: NextRequest) {
                 }
             }
         }
+        const displayContent = finalText || templateName;
 
-        let displayContent = finalText || templateName
-
-        // Store message in database
+        // ── 8. Store in DB ──
         const timestamp = new Date().toISOString();
-
-        // Process template components for storage with variables replaced
-        const processedComponents = {
-            header: null as {
-                format: string;
-                text?: string;
-                media_url?: string | null;
-            } | null,
-            body: null as {
-                text?: string;
-            } | null,
-            footer: null as {
-                text?: string;
-            } | null,
-            buttons: [] as Array<{
-                type: string;
-                text: string;
-                url?: string;
-                phone_number?: string;
-            }>
-        };
-
-
-
-
-
-
-
         const messageObject = {
             id: messageId,
-            sender_id: userId, // Recipient phone number (sender in DB)
-            receiver_id: to, // Current authenticated user (receiver in DB)
+            sender_id: userId,
+            receiver_id: to,
             content: displayContent,
-            timestamp: timestamp,
+            timestamp,
             is_sent_by_me: true,
-            is_read: true, // Outgoing messages are already "read" by the sender
+            is_read: true,
             message_type: 'template',
             media_data: JSON.stringify({
                 type: 'template',
@@ -515,11 +547,10 @@ export async function POST(request: NextRequest) {
                 language: templateData.language,
                 variables: templateData.components,
                 original_content: finalText || templateName,
-                // Add processed template components for rich display
-                header: processedComponents.header,
-                body: processedComponents.body,
-                footer: processedComponents.footer,
-                buttons: processedComponents.buttons
+                header: null,
+                body: null,
+                footer: null,
+                buttons: [],
             }),
         };
 
@@ -529,17 +560,16 @@ export async function POST(request: NextRequest) {
 
         if (dbError) {
             console.error('Error storing template message in database:', dbError);
-            // Don't fail the request if database storage fails
         } else {
-            console.log('Template message stored successfully in database:', messageObject.id);
+            console.log('Template message stored successfully:', messageObject.id);
         }
 
         return NextResponse.json({
             success: true,
-            messageId: messageId,
-            templateName: templateName,
-            displayContent: displayContent,
-            timestamp: timestamp,
+            messageId,
+            templateName,
+            displayContent,
+            timestamp,
         });
 
     } catch (error) {
@@ -547,7 +577,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
             {
                 error: 'Internal server error',
-                message: error instanceof Error ? error.message : 'Unknown error'
+                message: error instanceof Error ? error.message : 'Unknown error',
             },
             { status: 500 }
         );

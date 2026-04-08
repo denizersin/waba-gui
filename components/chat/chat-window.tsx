@@ -137,16 +137,19 @@ export function ChatWindow({
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   // Handle template message sending
-  const handleSendTemplate = async (templateName: string, templateData: WhatsAppTemplate, variables: {
-    header: Record<string, string>;
-    body: Record<string, string>;
-    footer: Record<string, string>;
-  }) => {
+  const handleSendTemplate = async (
+    templateName: string,
+    templateData: WhatsAppTemplate,
+    variables: {
+      header: Record<string, string>;
+      body: Record<string, string>;
+      footer: Record<string, string>;
+    },
+    headerImage?: File | null
+  ) => {
     // Handle broadcast mode
     if (broadcastGroupName) {
-      // Call onSendMessage with template data - it will be routed to broadcast endpoint
       const templateMessage = `Template: ${templateName}`;
-      // Store template data in a special format that the broadcast handler can use
       onSendMessage(JSON.stringify({
         type: 'template',
         templateName,
@@ -160,18 +163,34 @@ export function ChatWindow({
     if (!selectedUser) return;
 
     try {
-      const response = await fetch('/api/send-template', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: selectedUser.id,
-          templateName,
-          templateData,
-          variables,
-        }),
-      });
+      let response: Response;
+
+      if (headerImage) {
+        // Send as multipart/form-data when header image is present
+        const formData = new FormData();
+        formData.append('to', selectedUser.id);
+        formData.append('templateName', templateName);
+        formData.append('templateData', JSON.stringify(templateData));
+        formData.append('variables', JSON.stringify(variables));
+        formData.append('headerImage', headerImage);
+
+        response = await fetch('/api/send-template', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // Send as JSON when no image
+        response = await fetch('/api/send-template', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: selectedUser.id,
+            templateName,
+            templateData,
+            variables,
+          }),
+        });
+      }
 
       const result = await response.json();
 

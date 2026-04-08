@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { X, Search, Send, Loader2, AlertCircle, FileText, Eye } from "lucide-react";
+import { X, Search, Send, Loader2, AlertCircle, FileText, Eye, Upload, ImageIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import Image from "next/image";
 
 // Template types
 interface TemplateComponent {
@@ -62,7 +63,7 @@ interface TemplateSelectorProps {
     header: Record<string, string>;
     body: Record<string, string>;
     footer: Record<string, string>;
-  }) => Promise<void>;
+  }, headerImage?: File | null) => Promise<void>;
   selectedUser: ChatUser;
 }
 
@@ -85,6 +86,10 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [headerImageFile, setHeaderImageFile] = useState<File | null>(null);
+  const [headerImagePreview, setHeaderImagePreview] = useState<string | null>(null);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const headerImageInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch templates when dialog opens
   useEffect(() => {
@@ -306,9 +311,48 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     );
   };
 
+  // Helper: does this template have an IMAGE header?
+  const hasImageHeader = (template: WhatsAppTemplate): boolean => {
+    return template.components.some(
+      (c) => c.type === 'HEADER' && c.format === 'IMAGE'
+    );
+  };
+
+  const handleHeaderImageSelect = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 25 * 1024 * 1024) {
+      setError('Image file size exceeds 25MB limit');
+      return;
+    }
+    setHeaderImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setHeaderImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+    setError(null);
+  }, []);
+
+  const handleImageDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(true);
+  }, []);
+
+  const handleImageDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(false);
+  }, []);
+
+  const handleImageDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleHeaderImageSelect(file);
+  }, [handleHeaderImageSelect]);
+
   const handleTemplateSelect = (template: WhatsAppTemplate) => {
     setSelectedTemplate(template);
     setShowPreview(false);
+    setHeaderImageFile(null);
+    setHeaderImagePreview(null);
 
     // Initialize variables
     const templateVars = extractVariables(template);
@@ -329,6 +373,12 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     // Validate required variables per component
     const templateVars = extractVariables(selectedTemplate);
     const missingVars: string[] = [];
+
+    // Check if IMAGE header is required but not uploaded
+    if (hasImageHeader(selectedTemplate) && !headerImageFile) {
+      setError(t('header_image_missing'));
+      return;
+    }
 
     // Check header variables
     templateVars.header.forEach(variable => {
@@ -360,7 +410,12 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
     setError(null);
 
     try {
-      await onSendTemplate(selectedTemplate.name, selectedTemplate, variables);
+      await onSendTemplate(
+        selectedTemplate.name,
+        selectedTemplate,
+        variables,
+        headerImageFile
+      );
 
       // Reset state and close
       setSelectedTemplate(null);
@@ -369,6 +424,8 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
         body: {},
         footer: {}
       });
+      setHeaderImageFile(null);
+      setHeaderImagePreview(null);
       setShowPreview(false);
       onClose();
     } catch (error) {
@@ -386,6 +443,8 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
       body: {},
       footer: {}
     });
+    setHeaderImageFile(null);
+    setHeaderImagePreview(null);
     setShowPreview(false);
     setSearchTerm('');
     setError(null);
@@ -515,6 +574,86 @@ export function TemplateSelector({ isOpen, onClose, onSendTemplate, selectedUser
                       {t('back_to_templates')}
                     </Button>
                   </div>
+
+                  {/* Header Image Upload — shown only for IMAGE-format templates */}
+                  {hasImageHeader(selectedTemplate) && (
+                    <div className="mb-6">
+                      <div className="flex items-center gap-2 mb-3">
+                        <ImageIcon className="h-4 w-4 text-blue-500" />
+                        <h4 className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                          {t('upload_header_image')}
+                        </h4>
+                        <span className="text-xs text-red-500 font-medium">*</span>
+                      </div>
+
+                      {!headerImagePreview ? (
+                        <div
+                          className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+                            isDraggingImage
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
+                              : 'border-border hover:border-blue-400 hover:bg-muted/50'
+                          }`}
+                          onDragOver={handleImageDragOver}
+                          onDragLeave={handleImageDragLeave}
+                          onDrop={handleImageDrop}
+                          onClick={() => headerImageInputRef.current?.click()}
+                        >
+                          <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-sm font-medium mb-1">{t('header_image_required')}</p>
+                          <p className="text-xs text-muted-foreground">{t('header_image_upload_hint')}</p>
+                        </div>
+                      ) : (
+                        <div className="relative rounded-xl overflow-hidden border border-border">
+                          <Image
+                            src={headerImagePreview}
+                            alt="Header image preview"
+                            width={400}
+                            height={200}
+                            className="w-full object-cover max-h-40"
+                            unoptimized
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => headerImageInputRef.current?.click()}
+                              className="text-xs"
+                            >
+                              {t('header_image_change')}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => { setHeaderImageFile(null); setHeaderImagePreview(null); }}
+                              className="text-xs"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="px-3 py-2 bg-muted/80 flex items-center gap-2">
+                            <ImageIcon className="h-3 w-3 text-green-600" />
+                            <span className="text-xs text-muted-foreground truncate">
+                              {t('header_image_selected')}: {headerImageFile?.name}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Hidden file input */}
+                      <input
+                        ref={headerImageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        id="header-image-input"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleHeaderImageSelect(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </div>
+                  )}
 
                   {/* Variables */}
                   {extractVariables(selectedTemplate).all.length > 0 && (
