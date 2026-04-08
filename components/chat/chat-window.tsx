@@ -149,12 +149,36 @@ export function ChatWindow({
   ) => {
     // Handle broadcast mode
     if (broadcastGroupName) {
+      let headerMediaId: string | null = null;
+
+      // If template has an IMAGE header, upload image to WA once → reuse mediaId for all recipients
+      if (headerImage) {
+        try {
+          const uploadForm = new FormData();
+          uploadForm.append('file', headerImage);
+          const uploadRes = await fetch('/api/media/upload-whatsapp', {
+            method: 'POST',
+            body: uploadForm,
+          });
+          const uploadResult = await uploadRes.json();
+          if (!uploadRes.ok || !uploadResult.mediaId) {
+            throw new Error(uploadResult.error || 'Failed to upload header image');
+          }
+          headerMediaId = uploadResult.mediaId;
+          console.log('Header image uploaded for broadcast, mediaId:', headerMediaId);
+        } catch (uploadError) {
+          console.error('Header image upload failed:', uploadError);
+          throw uploadError; // Let template-selector show the error
+        }
+      }
+
       const templateMessage = `Template: ${templateName}`;
       onSendMessage(JSON.stringify({
         type: 'template',
         templateName,
         templateData,
         variables,
+        headerMediaId,   // null if no image header
         displayMessage: templateMessage
       }));
       return;

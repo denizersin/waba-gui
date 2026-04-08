@@ -736,6 +736,7 @@ export default function ChatPage() {
           templateName: parsedContent.templateName,
           templateData: parsedContent.templateData,
           variables: parsedContent.variables,
+          headerMediaId: parsedContent.headerMediaId ?? null,
         };
       } else {
         requestBody = {
@@ -777,7 +778,15 @@ export default function ChatPage() {
         body: JSON.stringify(requestBody),
       });
 
-      const result = await response.json();
+      const rawText = await response.text();
+      let result: { error?: string; results?: { success: number; total: number }; [key: string]: unknown };
+      try {
+        result = JSON.parse(rawText);
+      } catch {
+        // Server returned non-JSON (e.g. HTML error page or redirect)
+        console.error('Broadcast API returned non-JSON response:', rawText.substring(0, 200));
+        throw new Error(`Server error (${response.status}): API returned an unexpected response. Check server logs.`);
+      }
 
       if (!response.ok) {
         throw new Error(result.error || 'Failed to send broadcast');
@@ -790,13 +799,18 @@ export default function ChatPage() {
 
       // Refresh broadcast messages to show the real ones
       const messagesResponse = await fetch(`/api/groups/${broadcastGroupId}/messages`);
-      const messagesResult = await messagesResponse.json();
-      if (messagesResponse.ok && messagesResult.success) {
-        setMessages(messagesResult.messages || []);
+      try {
+        const messagesRaw = await messagesResponse.text();
+        const messagesResult = JSON.parse(messagesRaw);
+        if (messagesResponse.ok && messagesResult.success) {
+          setMessages(messagesResult.messages || []);
+        }
+      } catch {
+        console.warn('Failed to parse broadcast messages response');
       }
 
       // Show success message
-      alert(`Broadcast sent to ${result.results.success}/${result.results.total} members`);
+      alert(`Broadcast sent to ${result.results?.success ?? '?'}/${result.results?.total ?? '?'} members`);
 
       // Refresh users list to show the broadcast messages
       await refreshUsers();

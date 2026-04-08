@@ -9,20 +9,32 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  console.log('[broadcast] POST called');
   try {
     const supabase = await createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
+      console.error('[broadcast] Auth failed:', authError?.message ?? 'no user session');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    console.log('[broadcast] Authenticated as user:', user.id);
 
     const { id: groupId } = await params;
+    console.log('[broadcast] Group ID:', groupId);
+
     const body = await request.json();
-    const { message, templateName = null, templateData = null, variables = null } = body;
+    const { message, templateName = null, templateData = null, variables = null, headerMediaId = null } = body;
+    console.log('[broadcast] Request body summary:', {
+      hasMessage: !!message,
+      templateName,
+      hasTemplateData: !!templateData,
+      hasVariables: !!variables,
+      headerMediaId,
+    });
 
     // Validate input
     if (!message && !templateName) {
@@ -41,11 +53,17 @@ export async function POST(
       .single();
 
     if (groupError || !group) {
+      console.error('[broadcast] Group not found or unauthorized:', {
+        groupId,
+        userId: user.id,
+        error: groupError?.message,
+      });
       return NextResponse.json(
         { error: 'Group not found or unauthorized' },
         { status: 404 }
       );
     }
+    console.log('[broadcast] Group found:', group.name);
 
     // Get all group members
     const { data: members, error: membersError } = await supabase
@@ -54,7 +72,7 @@ export async function POST(
       .eq('group_id', groupId);
 
     if (membersError) {
-      console.error('Error fetching members:', membersError);
+      console.error('[broadcast] Error fetching members:', membersError);
       return NextResponse.json(
         { error: 'Failed to fetch group members', details: membersError.message },
         { status: 500 }
@@ -62,20 +80,28 @@ export async function POST(
     }
 
     if (!members || members.length === 0) {
+      console.warn('[broadcast] Group has no members:', groupId);
       return NextResponse.json(
         { error: 'Group has no members' },
         { status: 400 }
       );
     }
+    console.log(`[broadcast] Member count: ${members.length}`);
 
     // Get user settings for WhatsApp credentials
-    const { data: settings } = await supabase
+    const { data: settings, error: settingsError } = await supabase
       .from('user_settings')
       .select('access_token, phone_number_id, api_version')
       .eq('id', user.id)
       .single();
 
     if (!settings || !settings.access_token || !settings.phone_number_id) {
+      console.error('[broadcast] WhatsApp credentials missing:', {
+        settingsError: settingsError?.message,
+        hasSettings: !!settings,
+        hasToken: !!settings?.access_token,
+        hasPhoneId: !!settings?.phone_number_id,
+      });
       return NextResponse.json(
         { error: 'WhatsApp credentials not configured' },
         { status: 400 }
@@ -86,6 +112,7 @@ export async function POST(
     const phoneNumberId = settings.phone_number_id;
     const apiVersion = settings.api_version || 'v23.0';
     const whatsappApiUrl = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
+    console.log('[broadcast] WhatsApp API URL:', whatsappApiUrl);
 
     const results = {
       success: 0,
@@ -112,6 +139,7 @@ export async function POST(
         if (cleanPhoneNumber.startsWith('0')) {
           cleanPhoneNumber = cleanPhoneNumber.substring(1);
         }
+        console.log(`[broadcast] Processing member: raw=${member.user_id} clean=${cleanPhoneNumber}`);
         let whatsappResponse;
         let messageContent = message;
         let messageMediaData = null;
@@ -149,19 +177,26 @@ export async function POST(
         }
 
         if (templateName && templateData) {
-          // --- TEMPLATE FLOW (EXISTING LOGIC) ---
+          // --- TEMPLATE FLOW ---
           // Build template components for WhatsApp API
           const templateComponents = [];
 
-          // Add header parameters
-          if (variables?.header && Object.keys(variables.header).length > 0) {
+          // Header component: IMAGE (pre-uploaded mediaId) takes priority over TEXT variables
+          if (headerMediaId) {
+            console.log(`[broadcast] Using IMAGE header (mediaId: ${headerMediaId}) for ${cleanPhoneNumber}`);
+            templateComponents.push({
+              type: 'header',
+              parameters: [{ type: 'image', image: { id: headerMediaId } }],
+            });
+          } else if (variables?.header && Object.keys(variables.header).length > 0) {
             const headerParams = Object.keys(variables.header)
               .sort((a, b) => parseInt(a) - parseInt(b))
               .map(key => ({ type: 'text', text: variables.header[key] }));
+            console.log(`[broadcast] Using TEXT header params for ${cleanPhoneNumber}:`, headerParams);
             templateComponents.push({ type: 'header', parameters: headerParams });
           }
 
-          // Add body parameters
+          // Body parameters
           if (variables?.body && Object.keys(variables.body).length > 0) {
             const bodyParams = Object.keys(variables.body)
               .sort((a, b) => parseInt(a) - parseInt(b))
@@ -169,7 +204,7 @@ export async function POST(
             templateComponents.push({ type: 'body', parameters: bodyParams });
           }
 
-          // Add footer parameters
+          // Footer parameters
           if (variables?.footer && Object.keys(variables.footer).length > 0) {
             const footerParams = Object.keys(variables.footer)
               .sort((a, b) => parseInt(a) - parseInt(b))
@@ -191,6 +226,7 @@ export async function POST(
             }
           };
 
+          console.log(`[broadcast] Sending TEMPLATE to ${cleanPhoneNumber}:`, JSON.stringify(templateMessage, null, 2));
           whatsappResponse = await fetch(whatsappApiUrl, {
             method: 'POST',
             headers: {
@@ -199,6 +235,7 @@ export async function POST(
             },
             body: JSON.stringify(templateMessage),
           });
+          console.log(`[broadcast] WhatsApp template response status for ${cleanPhoneNumber}: ${whatsappResponse.status}`);
 
           // Process template components for storage with variables replaced
           interface ProcessedComponent {
@@ -275,7 +312,18 @@ export async function POST(
           });
 
           // Handle Response for Template
-          const responseData = await whatsappResponse.json();
+          const templateRawBody = await whatsappResponse.text();
+          console.log(`[broadcast] WhatsApp template raw response for ${cleanPhoneNumber}:`, templateRawBody.substring(0, 500));
+          interface WAResponse { messages?: { id: string }[]; error?: { message?: string; code?: number } }
+          let responseData: WAResponse;
+          try {
+            responseData = JSON.parse(templateRawBody) as WAResponse;
+          } catch {
+            console.error(`[broadcast] Non-JSON response from WhatsApp for ${cleanPhoneNumber}:`, templateRawBody.substring(0, 300));
+            results.failed++;
+            results.errors.push(`${member.user_id}: WhatsApp API returned non-JSON response (status ${whatsappResponse.status})`);
+            continue;
+          }
 
           if (whatsappResponse.ok) {
             results.success++;
@@ -331,6 +379,7 @@ export async function POST(
             }
           };
 
+          console.log(`[broadcast] Sending TEXT to ${cleanPhoneNumber}:`, JSON.stringify(textMessage, null, 2));
           whatsappResponse = await fetch(whatsappApiUrl, {
             method: 'POST',
             headers: {
@@ -339,9 +388,21 @@ export async function POST(
             },
             body: JSON.stringify(textMessage),
           });
+          console.log(`[broadcast] WhatsApp text response status for ${cleanPhoneNumber}: ${whatsappResponse.status}`);
 
           // 3. Handle Response & storage
-          const responseData = await whatsappResponse.json();
+          const textRawBody = await whatsappResponse.text();
+          console.log(`[broadcast] WhatsApp text raw response for ${cleanPhoneNumber}:`, textRawBody.substring(0, 500));
+          interface WAResponse { messages?: { id: string }[]; error?: { message?: string; code?: number } }
+          let responseData: WAResponse;
+          try {
+            responseData = JSON.parse(textRawBody) as WAResponse;
+          } catch {
+            console.error(`[broadcast] Non-JSON response from WhatsApp for ${cleanPhoneNumber}:`, textRawBody.substring(0, 300));
+            results.failed++;
+            results.errors.push(`${member.user_id}: WhatsApp API returned non-JSON response (status ${whatsappResponse.status})`);
+            continue;
+          }
 
           if (whatsappResponse.ok) {
             results.success++;
@@ -392,8 +453,13 @@ export async function POST(
       } catch (error) {
         results.failed++;
         results.errors.push(`${member.user_id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        console.error(`Error sending to ${member.user_id}:`, error);
+        console.error(`[broadcast] Unhandled error for member ${member.user_id}:`, error);
       }
+    }
+
+    console.log(`[broadcast] Done. success=${results.success} failed=${results.failed} total=${members.length}`);
+    if (results.errors.length > 0) {
+      console.warn('[broadcast] Errors:', results.errors);
     }
 
     return NextResponse.json({
@@ -408,9 +474,12 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('Error in broadcast API:', error);
+    console.error('[broadcast] Fatal error in POST handler:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
