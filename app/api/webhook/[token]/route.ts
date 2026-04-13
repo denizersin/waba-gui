@@ -4,6 +4,19 @@ import { downloadAndUploadToS3 } from '@/lib/aws-s3';
 
 export const runtime = 'nodejs';
 
+// In-memory cache to prevent Supabase 502 Bad Gateway during high webhook volume (like Broadcasts)
+interface CachedSettings {
+  data: {
+    id: string;
+    access_token: string;
+    api_version: string;
+    phone_number_id: string;
+  };
+  timestamp: number;
+}
+const settingsCache = new Map<string, CachedSettings>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // TypeScript interfaces for webhook payload
 interface WhatsAppContact {
   wa_id: string;
@@ -258,12 +271,28 @@ export async function POST(
       return new NextResponse('Forbidden', { status: 403 });
     }
 
-    // Find user by webhook token
-    const { data: userSettings, error: settingsError } = await supabase
-      .from('user_settings')
-      .select('id, access_token, api_version, phone_number_id')
-      .eq('webhook_token', webhookToken)
-      .single();
+    // Check cache first to prevent database connection exhaustion
+    const now = Date.now();
+    const cached = settingsCache.get(webhookToken);
+    let userSettings = undefined;
+    let settingsError = null;
+
+    if (cached && now - cached.timestamp < CACHE_TTL) {
+      userSettings = cached.data;
+    } else {
+      const result = await supabase
+        .from('user_settings')
+        .select('id, access_token, api_version, phone_number_id')
+        .eq('webhook_token', webhookToken)
+        .single();
+        
+      userSettings = result.data;
+      settingsError = result.error;
+      
+      if (userSettings && !settingsError) {
+        settingsCache.set(webhookToken, { data: userSettings, timestamp: now });
+      }
+    }
 
     if (settingsError || !userSettings) {
       console.error('No user found for webhook token:', webhookToken?.substring(0, 8) + '...');
@@ -293,7 +322,15 @@ export async function POST(
     const changes = entry?.changes?.[0];
     const value = changes?.value;
     const messages: WhatsAppMessage[] = value?.messages || [];
+    const statuses = value?.statuses || [];
     const contacts: WhatsAppContact[] = value?.contacts || [];
+    
+    if (statuses.length > 0) {
+      console.log(`Received ${statuses.length} status update(s)`);
+      statuses.forEach((status: any) => {
+        console.log(`Status: Message ${status.id} -> ${status.status} (Recipient: ${status.recipient_id})`);
+      });
+    }
     
     // Extract the phone number ID that received the message
     const phoneNumberId = value?.metadata?.phone_number_id;
