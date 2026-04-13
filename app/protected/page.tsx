@@ -64,6 +64,7 @@ export default function ChatPage() {
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [broadcastGroupId, setBroadcastGroupId] = useState<string | null>(null);
   const [broadcastGroupName, setBroadcastGroupName] = useState<string | null>(null);
+  const [broadcastJob, setBroadcastJob] = useState<{ id: string, total: number, success: number, failed: number, status: string } | null>(null);
   const supabase = createFrontendClient();
   const { t } = useTranslation();
 
@@ -84,6 +85,38 @@ export default function ChatPage() {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Poll broadcast job status
+  useEffect(() => {
+    if (!broadcastJob || broadcastJob.status === 'completed' || broadcastJob.status === 'failed') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/jobs/${broadcastJob.id}`);
+        const data = await res.json();
+        if (data.success && data.job) {
+          setBroadcastJob((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              success: data.job.success_count,
+              failed: data.job.failed_count,
+              status: data.job.status
+            };
+          });
+          
+          if (data.job.status === 'completed' || data.job.status === 'failed') {
+            clearInterval(interval);
+            alert(`Broadcast finished. Success: ${data.job.success_count}, Failed: ${data.job.failed_count}`);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to poll broadcast job:", e);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [broadcastJob?.id, broadcastJob?.status]);
 
   // Handle ESC key press to close chat window
   useEffect(() => {
@@ -779,25 +812,35 @@ export default function ChatPage() {
       });
 
       const rawText = await response.text();
-      let result: { error?: string; results?: { success: number; total: number }; [key: string]: unknown };
+      let result: { error?: string; job_id?: string; results?: { success: number; total: number }; [key: string]: unknown };
       try {
         result = JSON.parse(rawText);
       } catch {
         // Server returned non-JSON (e.g. HTML error page or redirect)
         console.error('Broadcast API returned non-JSON response:', rawText.substring(0, 200));
-        throw new Error(`Server error (${response.status}): API returned an unexpected response. Check server logs.`);
+        throw new Error(`Server error (${response.status}): API returned an unexpected response.`);
       }
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to send broadcast');
+        throw new Error(result.error || 'Failed to start broadcast');
       }
 
-      console.log('Broadcast sent successfully:', result);
+      console.log('Broadcast started successfully:', result);
+
+      if (result.job_id) {
+        setBroadcastJob({
+          id: result.job_id,
+          total: result.results?.total || 0,
+          success: 0,
+          failed: 0,
+          status: 'processing'
+        });
+      }
 
       // Remove optimistic message and refresh to get real messages
       setMessages((prev) => prev.filter(m => m.id !== optimisticId));
 
-      // Refresh broadcast messages to show the real ones
+      // Refresh broadcast messages
       const messagesResponse = await fetch(`/api/groups/${broadcastGroupId}/messages`);
       try {
         const messagesRaw = await messagesResponse.text();
@@ -809,8 +852,7 @@ export default function ChatPage() {
         console.warn('Failed to parse broadcast messages response');
       }
 
-      // Show success message
-      alert(`Broadcast sent to ${result.results?.success ?? '?'}/${result.results?.total ?? '?'} members`);
+      // alert(`Broadcast started for ${result.results?.total ?? '?'} members. Check the indicator for progress.`);
 
       // Refresh users list to show the broadcast messages
       await refreshUsers();
@@ -978,6 +1020,31 @@ export default function ChatPage() {
       <div className="absolute top-4 right-4 z-50">
         <LanguageSwitcher />
       </div>
+      
+      {/* Broadcast Job Progress Indicator */}
+      {broadcastJob && (
+        <div className="absolute top-16 right-4 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg border p-4 flex flex-col gap-2 min-w-[250px]">
+          <div className="flex justify-between items-center">
+            <h4 className="font-semibold text-sm">
+              {broadcastJob.status === 'processing' ? t('broadcast_sending') : t('broadcast_finished')}
+            </h4>
+            <button onClick={() => setBroadcastJob(null)} className="text-gray-500 hover:text-gray-700">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground mb-1">
+            {broadcastJob.success + broadcastJob.failed} / {broadcastJob.total} {t('members')} processed
+          </p>
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+            <div className={`bg-green-600 h-2.5 rounded-full transition-all duration-500`} style={{ width: `${Math.min(100, Math.max(0, ((broadcastJob.success + broadcastJob.failed) / broadcastJob.total) * 100))}%` }}></div>
+          </div>
+          <div className="flex justify-between text-xs mt-1">
+            <span className="text-green-600 font-medium">Success: {broadcastJob.success}</span>
+            <span className="text-red-500 font-medium">Failed: {broadcastJob.failed}</span>
+          </div>
+        </div>
+      )}
+
       {/* Desktop Layout */}
       {!isMobile && (
         <>
